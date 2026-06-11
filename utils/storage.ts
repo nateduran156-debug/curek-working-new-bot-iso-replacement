@@ -36,6 +36,7 @@ export interface GuildSettings {
   approvedGroups?: Array<{ groupId: string; name: string }>;
   customTags?: string[];
   queueChannel?: string;
+  logTicketCategoryId?: string;
 }
 
 export interface TicketData {

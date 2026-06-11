@@ -13,6 +13,7 @@ import {
   openLogTicket,
   sendLogPanel,
 } from "./1v1Handler.js";
+import { setMatchLogChannel, getIsFrozen, setFrozen } from "../utils/1v1Storage.js";
 import { buildHelpMessage } from "../utils/help.js";
 import {
   giveRobloxTagRole, getUserByUsername, getGroupRank, validateCookie,
@@ -390,10 +391,24 @@ export async function handleSlashCommand(i: ChatInputCommandInteraction): Promis
     // ── setupticket ──────────────────────────────────────────────────────────
     case "setupticket": {
       if (!mgGuild(i)) return i.reply({ content: "you don't have permission to do that", ephemeral: true });
-      const ch   = i.options.getChannel("channel", true) as TextChannel;
-      const type = (i.options.getString("type") ?? "both") as "verification" | "tag" | "both";
+      const ch       = i.options.getChannel("channel", true) as TextChannel;
+      const type     = (i.options.getString("type") ?? "both") as "verification" | "tag" | "both" | "1v1";
+      const category = i.options.getChannel("category") ?? null;
       await i.deferReply();
       await sendTicketPanel(ch, type);
+      if (type === "1v1") {
+        if (category) setGuild(guildId, { logTicketCategoryId: category.id });
+        await logSetup(guildId, "1v1 Log Panel Set Up",
+          `<@${i.user.id}> set up the 1v1 log panel`,
+          [
+            { name: "Channel", value: `<#${ch.id}>`, inline: true },
+            ...(category ? [{ name: "Ticket Category", value: `<#${category.id}>`, inline: true }] : []),
+          ],
+        );
+        return i.editReply({
+          content: `1v1 log panel sent to <#${ch.id}>${category ? ` — tickets will be created in <#${category.id}>` : ""}`,
+        });
+      }
       setGuild(guildId, { ticketChannel: ch.id });
       await logSetup(guildId, "Ticket Panel Set Up",
         `<@${i.user.id}> set up the ticket panel`,
@@ -402,7 +417,30 @@ export async function handleSlashCommand(i: ChatInputCommandInteraction): Promis
       return i.editReply({ content: `panel sent to <#${ch.id}>` });
     }
 
-    // ── logset ───────────────────────────────────────────────────────────────
+    // ── 1v1freeze ─────────────────────────────────────────────────────────────
+    case "1v1freeze": {
+      if (!mgGuild(i)) return i.reply({ content: "you don't have permission to do that", ephemeral: true });
+      const current = getIsFrozen(guildId);
+      setFrozen(guildId, !current);
+      const nowFrozen = !current;
+      await logSetup(guildId,
+        `1v1 Leaderboard ${nowFrozen ? "Frozen" : "Unfrozen"}`,
+        `<@${i.user.id}> ${nowFrozen ? "froze" : "unfroze"} the 1v1 leaderboard`,
+      );
+      return i.reply({
+        content: `1v1 leaderboard is now **${nowFrozen ? "🔒 frozen" : "🔓 unfrozen"}** — ${nowFrozen ? "no new challenges can be made" : "challenges are open again"}`,
+      });
+    }
+
+    // ── 1v1logset ─────────────────────────────────────────────────────────────
+    case "1v1logset": {
+      if (!mgGuild(i)) return i.reply({ content: "you don't have permission to do that", ephemeral: true });
+      const ch = i.options.getChannel("channel", true) as TextChannel;
+      setMatchLogChannel(guildId, ch.id);
+      await logSetup(guildId, "1v1 Log Channel Set", `<@${i.user.id}> set the 1v1 log channel to <#${ch.id}>`);
+      return i.reply({ content: `1v1 match results and ticket messages going to <#${ch.id}> now` });
+    }
+
     case "logset": {
       if (!mgGuild(i)) return i.reply({ content: "you don't have permission to do that", ephemeral: true });
       const ch = i.options.getChannel("channel", true) as TextChannel;

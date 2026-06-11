@@ -5,6 +5,7 @@ import {
   handleLogWin,
   handleLogLoss,
   handleLogClose,
+  handleLogDispute,
   openLogTicket,
 } from "./1v1Handler.js";
 import {
@@ -215,6 +216,11 @@ export async function handleButton(interaction: Interaction) {
 
     if (customId === "1v1_log_close") {
       return handleLogClose(buttonInteraction);
+    }
+
+    if (customId.startsWith("1v1_log_dispute::")) {
+      const challengeId = customId.slice("1v1_log_dispute::".length);
+      return handleLogDispute(buttonInteraction, challengeId);
     }
 
     // ── open log ticket panel button ──────────────────────────────────────────

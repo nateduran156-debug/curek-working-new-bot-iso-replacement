@@ -1,6 +1,8 @@
 import { readJSON, writeJSON } from "./storage.js";
 
-export const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+export const TWO_DAYS_MS        = 2 * 24 * 60 * 60 * 1000;
+export const ONE_DAY_MS         = 24 * 60 * 60 * 1000;
+export const REMATCH_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 export interface RankedPlayer {
   userId: string;
@@ -49,6 +51,8 @@ interface Guild1v1Settings {
   matchLogChannelId?: string;
   liveLeaderboardChannelId?: string;
   liveLeaderboardMessageId?: string;
+  frozen?: boolean;
+  warningSentIds?: string[];
 }
 
 function getAllGuild1v1Settings(): Record<string, Guild1v1Settings> {
@@ -87,6 +91,55 @@ export function setLiveLeaderboard(guildId: string, channelId: string, messageId
   s.liveLeaderboardChannelId = channelId;
   s.liveLeaderboardMessageId = messageId;
   saveGuild1v1Settings(guildId, s);
+}
+
+export function getIsFrozen(guildId: string): boolean {
+  return getGuild1v1Settings(guildId).frozen ?? false;
+}
+
+export function setFrozen(guildId: string, frozen: boolean): void {
+  const s = getGuild1v1Settings(guildId);
+  s.frozen = frozen;
+  saveGuild1v1Settings(guildId, s);
+}
+
+export function hasWarningSent(guildId: string, challengeId: string): boolean {
+  return (getGuild1v1Settings(guildId).warningSentIds ?? []).includes(challengeId);
+}
+
+export function markWarningSent(guildId: string, challengeId: string): void {
+  const s = getGuild1v1Settings(guildId);
+  if (!s.warningSentIds) s.warningSentIds = [];
+  if (!s.warningSentIds.includes(challengeId)) s.warningSentIds.push(challengeId);
+  if (s.warningSentIds.length > 200) s.warningSentIds = s.warningSentIds.slice(-200);
+  saveGuild1v1Settings(guildId, s);
+}
+
+export function getPendingChallengesWarningSoon(): PendingChallenge[] {
+  const TWO_HOURS = 2 * 60 * 60 * 1000;
+  const allSettings = getAllGuild1v1Settings();
+  const warnedIds = new Set(
+    Object.values(allSettings).flatMap((s) => s.warningSentIds ?? []),
+  );
+  return Object.values(getAllChallenges()).filter(
+    (c) =>
+      c.status === "pending" &&
+      !warnedIds.has(c.id) &&
+      c.expiresAt - Date.now() < TWO_HOURS &&
+      c.expiresAt - Date.now() > 0,
+  );
+}
+
+export function getLastMatchBetween(guildId: string, aId: string, bId: string): MatchRecord | null {
+  const matches = getAllMatches()[guildId] ?? [];
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const m = matches[i]!;
+    if (
+      (m.winnerId === aId && m.loserId === bId) ||
+      (m.winnerId === bId && m.loserId === aId)
+    ) return m;
+  }
+  return null;
 }
 
 // ── leaderboard ───────────────────────────────────────────────────────────────
@@ -170,6 +223,26 @@ export function clearCooldown(guildId: string, userId: string): void {
     }
   }
   saveLeaderboard(guildId, lb);
+}
+
+export function applyWinnerCooldown(guildId: string, userId: string): void {
+  const lb = getLeaderboard(guildId);
+  for (const [s, p] of Object.entries(lb)) {
+    if (p.userId === userId) {
+      lb[s] = { ...p, cooldownUntil: Date.now() + ONE_DAY_MS, pendingChallengeId: null };
+      break;
+    }
+  }
+  saveLeaderboard(guildId, lb);
+}
+
+export function getActiveChallengeForUser(guildId: string, userId: string): PendingChallenge | null {
+  return Object.values(getAllChallenges()).find(
+    (c) =>
+      c.guildId === guildId &&
+      c.status === "accepted" &&
+      (c.challengerId === userId || c.opponentId === userId),
+  ) ?? null;
 }
 
 // ── challenges ────────────────────────────────────────────────────────────────

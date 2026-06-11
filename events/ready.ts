@@ -94,7 +94,21 @@ const commands = [
           { name: "both", value: "both" },
           { name: "verification", value: "verification" },
           { name: "tag", value: "tag" },
+          { name: "1v1 log", value: "1v1" },
         ),
+    )
+    .addChannelOption((o) =>
+      o.setName("category").setDescription("(1v1 only) discord category where log tickets are created").setRequired(false)
+        .addChannelTypes(ChannelType.GuildCategory),
+    ),
+
+  new SlashCommandBuilder()
+    .setName("1v1logset")
+    .setDescription("set the channel where 1v1 match results and ticket messages are posted")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
+    .addChannelOption((o) =>
+      o.setName("channel").setDescription("1v1 log channel").setRequired(true)
+        .addChannelTypes(ChannelType.GuildText),
     ),
 
   new SlashCommandBuilder()
@@ -523,6 +537,11 @@ const commands = [
             .addChannelTypes(ChannelType.GuildText),
         ),
     ),
+
+  new SlashCommandBuilder()
+    .setName("1v1freeze")
+    .setDescription("toggle the leaderboard freeze — no new challenges can be made while frozen")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
 
   new SlashCommandBuilder()
     .setName("1v1history")

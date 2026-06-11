@@ -109,8 +109,34 @@ async function getDiscordAvatar(guild: Guild, userId: string): Promise<string | 
 // Send the ticket panel to a channel
 export async function sendTicketPanel(
   channel: TextChannel,
-  type: "verification" | "tag" | "both",
+  type: "verification" | "tag" | "both" | "1v1",
 ) {
+  if (type === "1v1") {
+    const button = new ButtonBuilder()
+      .setCustomId("open_log_ticket")
+      .setLabel("open log ticket")
+      .setStyle(ButtonStyle.Primary);
+
+    await channel.send({
+      embeds: [{
+        color: WHITE,
+        description: [
+          `${SEP}`,
+          `  1v1 log tickets`,
+          `${SEP}`,
+          `  both players click the button after your match`,
+          `  a shared ticket opens automatically when both of you click`,
+          `  drop your proof and staff will log the result`,
+          `${SEP}`,
+        ].join("\n"),
+        footer: { text: "◈  1v1 log system" },
+        timestamp: getTimestamp(),
+      }],
+      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+    });
+    return;
+  }
+
   if (type === "both") {
     const menu = new StringSelectMenuBuilder()
       .setCustomId("ticket_select")
