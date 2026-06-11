@@ -454,6 +454,93 @@ const commands = [
         .addRoleOption((o) => o.setName("role").setDescription("role to ping — leave blank to reset to @everyone").setRequired(false)),
     ),
 
+  // ── 1v1 system ────────────────────────────────────────────────────────────
+  new SlashCommandBuilder()
+    .setName("fazee")
+    .setDescription("shows the top 5 1v1 leaderboard")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
+
+  new SlashCommandBuilder()
+    .setName("challenge")
+    .setDescription("challenge someone for their leaderboard spot")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
+    .addUserOption((o) => o.setName("opponent").setDescription("who you want to challenge").setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName("log")
+    .setDescription("open a 1v1 match log ticket")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
+
+  new SlashCommandBuilder()
+    .setName("logpanel")
+    .setDescription("send the log ticket panel to a channel")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
+    .addChannelOption((o) =>
+      o.setName("channel").setDescription("channel to send the panel to").setRequired(true)
+        .addChannelTypes(ChannelType.GuildText),
+    ),
+
+  new SlashCommandBuilder()
+    .setName("loground")
+    .setDescription("log a raid and track who attended")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
+    .addStringOption((o) =>
+      o.setName("attendees").setDescription("mention all attendees").setRequired(true),
+    ),
+
+  new SlashCommandBuilder()
+    .setName("1v1set")
+    .setDescription("manage the 1v1 leaderboard (admin)")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
+    .addSubcommand((s) =>
+      s.setName("add").setDescription("place a player at a spot")
+        .addUserOption((o) => o.setName("user").setDescription("player to add").setRequired(true))
+        .addIntegerOption((o) => o.setName("spot").setDescription("spot number 1–5").setRequired(true).setMinValue(1).setMaxValue(5)),
+    )
+    .addSubcommand((s) =>
+      s.setName("remove").setDescription("remove a player from the leaderboard")
+        .addUserOption((o) => o.setName("user").setDescription("player to remove").setRequired(true)),
+    )
+    .addSubcommand((s) =>
+      s.setName("cooldown").setDescription("manually apply a 2-day cooldown to a player")
+        .addUserOption((o) => o.setName("user").setDescription("player to cooldown").setRequired(true)),
+    )
+    .addSubcommand((s) =>
+      s.setName("clearcooldown").setDescription("clear a player's cooldown")
+        .addUserOption((o) => o.setName("user").setDescription("player to clear").setRequired(true)),
+    )
+    .addSubcommand((s) =>
+      s.setName("setlog").setDescription("set the channel where all match results are posted")
+        .addChannelOption((o) =>
+          o.setName("channel").setDescription("channel to post results in").setRequired(true)
+            .addChannelTypes(ChannelType.GuildText),
+        ),
+    )
+    .addSubcommand((s) =>
+      s.setName("pin").setDescription("post a live-updating leaderboard embed to a channel")
+        .addChannelOption((o) =>
+          o.setName("channel").setDescription("channel to post the live board in").setRequired(true)
+            .addChannelTypes(ChannelType.GuildText),
+        ),
+    ),
+
+  new SlashCommandBuilder()
+    .setName("1v1history")
+    .setDescription("view a player's match history")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
+    .addUserOption((o) => o.setName("user").setDescription("player to look up — defaults to you").setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName("1v1stats")
+    .setDescription("view a player's win/loss stats and current spot")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
+    .addUserOption((o) => o.setName("user").setDescription("player to look up — defaults to you").setRequired(false)),
+
+  new SlashCommandBuilder()
+    .setName("1v1top")
+    .setDescription("all-time server leaderboard ranked by wins")
+    .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
+
   // ── roblox tracker ────────────────────────────────────────────────────────
   new SlashCommandBuilder()
     .setName("track")

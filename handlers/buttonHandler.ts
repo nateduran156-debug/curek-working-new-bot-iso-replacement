@@ -1,5 +1,13 @@
 import { PermissionFlagsBits, type Interaction, type TextChannel } from "discord.js";
 import {
+  handleChallengeAccept,
+  handleChallengeDecline,
+  handleLogWin,
+  handleLogLoss,
+  handleLogClose,
+  openLogTicket,
+} from "./1v1Handler.js";
+import {
   getTickets,
   setVerified,
   getGuild,
@@ -182,6 +190,40 @@ export async function handleButton(interaction: Interaction) {
     }
 
     if (customId === "resetall_confirm" || customId === "resetall_cancel") return;
+
+    // ── 1v1 challenge buttons ─────────────────────────────────────────────────
+    if (customId.startsWith("1v1_accept::")) {
+      const challengeId = customId.slice("1v1_accept::".length);
+      return handleChallengeAccept(buttonInteraction, challengeId);
+    }
+
+    if (customId.startsWith("1v1_decline::")) {
+      const challengeId = customId.slice("1v1_decline::".length);
+      return handleChallengeDecline(buttonInteraction, challengeId);
+    }
+
+    // ── log ticket result buttons ─────────────────────────────────────────────
+    if (customId.startsWith("1v1_log_win::")) {
+      const [, submitterId, challengeId] = customId.split("::");
+      return handleLogWin(buttonInteraction, submitterId ?? "", challengeId ?? "none");
+    }
+
+    if (customId.startsWith("1v1_log_loss::")) {
+      const [, submitterId, challengeId] = customId.split("::");
+      return handleLogLoss(buttonInteraction, submitterId ?? "", challengeId ?? "none");
+    }
+
+    if (customId === "1v1_log_close") {
+      return handleLogClose(buttonInteraction);
+    }
+
+    // ── open log ticket panel button ──────────────────────────────────────────
+    if (customId === "open_log_ticket") {
+      if (!buttonInteraction.guild) {
+        return buttonInteraction.reply({ content: "server only.", ephemeral: true });
+      }
+      return openLogTicket(buttonInteraction, buttonInteraction.guild);
+    }
 
     // Handle ticket action buttons (close, kick, verify)
     const allTickets = getTickets();

@@ -207,7 +207,7 @@ export async function openVerificationTicket(
   const modalInteraction = interaction as import("discord.js").ModalSubmitInteraction;
   const settings = getGuild(guild.id);
 
-  const categoryId = "1483611162196316231";
+  const categoryId = "1474701312762446057";
   const category = guild.channels.cache.get(categoryId) ?? null;
 
   const FALLBACK_VMR = "1493484814215413771";
@@ -370,7 +370,7 @@ export async function openTagChannel(interaction: Interaction) {
   const guild = tagInteraction.guild!;
   const settings = getGuild(guild.id);
 
-  const categoryId = "1482174736128807034";
+  const categoryId = "1474702146309062770";
   const category = guild.channels.cache.get(categoryId) ?? null;
 
   const channelPermissions: import("discord.js").OverwriteResolvable[] = [
@@ -816,10 +816,9 @@ export async function handleTagManagerMessage(message: Message) {
 
   if (!ticket || ticket.type !== "tag" || ticket.status !== "open") return;
 
-  const isAdmin = message.member?.permissions.has(PermissionFlagsBits.Administrator);
-  const isTagManager = message.member ? memberHasTagManagerRole(message.member, guildId) : false;
+  const isTagManager = message.member ? (canManageTags(message.member, guildId)) : false;
 
-  if (!isAdmin && !isTagManager) return;
+  if (!isTagManager) return;
 
   const approveWords = ["approved", "yes", "approve"];
   const denyWords = ["no", "deny", "denied"];
@@ -1213,11 +1212,10 @@ export async function handleRaidApprove(
   const isWlBot = (wl["bot"] ?? []).includes(interaction.user.id);
   const hasPSR = !!settings.pointsSupportRole && !!member?.roles.cache.has(settings.pointsSupportRole);
   const hasPR = !!settings.pointsRole && !!member?.roles.cache.has(settings.pointsRole);
-  const isAdmin = !!member?.permissions.has(PermissionFlagsBits.Administrator);
 
-  if (!isOwner && !isWlBot && !hasPSR && !hasPR && !isAdmin) {
+  if (!isOwner && !isWlBot && !hasPSR && !hasPR) {
     await interaction.reply({
-      content: "you don't have permission to approve raid point requests.",
+      content: "you're not staff, you can't do that.",
       ephemeral: true,
     });
     return;
@@ -1280,11 +1278,10 @@ export async function handleRaidDeny(
   const isWlBotDeny = (wlDeny["bot"] ?? []).includes(interaction.user.id);
   const hasPSR = !!settings.pointsSupportRole && !!member?.roles.cache.has(settings.pointsSupportRole);
   const hasPR = !!settings.pointsRole && !!member?.roles.cache.has(settings.pointsRole);
-  const isAdmin = !!member?.permissions.has(PermissionFlagsBits.Administrator);
 
-  if (!isOwner && !isWlBotDeny && !hasPSR && !hasPR && !isAdmin) {
+  if (!isOwner && !isWlBotDeny && !hasPSR && !hasPR) {
     await interaction.reply({
-      content: "you don't have permission to deny raid point requests.",
+      content: "you're not staff, you can't do that.",
       ephemeral: true,
     });
     return;

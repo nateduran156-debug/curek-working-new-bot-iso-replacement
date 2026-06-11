@@ -2,6 +2,17 @@ import {
   ActivityType, AttachmentBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   PermissionFlagsBits, type ChatInputCommandInteraction, type GuildMember, type TextChannel, type Guild,
 } from "discord.js";
+import {
+  build1v1Embed,
+  handleChallengeCommand,
+  handle1v1Set,
+  handleLogRound,
+  handleHistory,
+  handleStats,
+  handleTop,
+  openLogTicket,
+  sendLogPanel,
+} from "./1v1Handler.js";
 import { buildHelpMessage } from "../utils/help.js";
 import {
   giveRobloxTagRole, getUserByUsername, getGroupRank, validateCookie,
@@ -1418,6 +1429,57 @@ export async function handleSlashCommand(i: ChatInputCommandInteraction): Promis
         });
       }
       return;
+    }
+
+    // ── 1v1 leaderboard ───────────────────────────────────────────────────────
+    case "fazee": {
+      const embed = build1v1Embed(guildId);
+      return i.reply({ embeds: [embed] });
+    }
+
+    // ── challenge ─────────────────────────────────────────────────────────────
+    case "challenge": {
+      return handleChallengeCommand(i);
+    }
+
+    // ── log ticket ────────────────────────────────────────────────────────────
+    case "log": {
+      if (!i.guild) return i.reply({ content: "server only.", ephemeral: true });
+      return openLogTicket(i, i.guild);
+    }
+
+    // ── log panel ─────────────────────────────────────────────────────────────
+    case "logpanel": {
+      if (!mgGuild(i)) return i.reply({ content: "you don't have permission to do that", ephemeral: true });
+      await i.deferReply({ ephemeral: true });
+      const ch = i.options.getChannel("channel", true) as TextChannel;
+      await sendLogPanel(ch, guildId);
+      return i.editReply({ content: `log panel sent to <#${ch.id}>.` });
+    }
+
+    // ── log round (raid) ──────────────────────────────────────────────────────
+    case "loground": {
+      return handleLogRound(i);
+    }
+
+    // ── 1v1set admin ──────────────────────────────────────────────────────────
+    case "1v1set": {
+      return handle1v1Set(i);
+    }
+
+    // ── 1v1 history ───────────────────────────────────────────────────────────
+    case "1v1history": {
+      return handleHistory(i);
+    }
+
+    // ── 1v1 stats ─────────────────────────────────────────────────────────────
+    case "1v1stats": {
+      return handleStats(i);
+    }
+
+    // ── 1v1 all-time top ──────────────────────────────────────────────────────
+    case "1v1top": {
+      return handleTop(i);
     }
 
     default:
