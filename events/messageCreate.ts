@@ -178,6 +178,7 @@ import { syncRankRoles } from "../utils/ranks.js";
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function dispatch(cmd: string, args: string[], message: Message, member: GuildMember, client: Client): Promise<any> {
   const guildId = message.guild!.id;
+  const PREFIX  = getGuild(guildId).prefix ?? ".";
   const wl      = getWhitelist();
   const isSU    = () => OWNER_IDS.has(member.id) || (wl["bot"] ?? []).includes(member.id);
   const admin   = () => isSU();

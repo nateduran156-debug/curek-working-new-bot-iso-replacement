@@ -292,6 +292,7 @@ export async function handleButton(interaction: Interaction) {
 
     await target.roles.add(settings.verificationRole).catch(() => {});
     await target.roles.remove("1493486362165252177").catch(() => {});
+    await target.roles.remove("1474907368662892758").catch(() => {});
 
     if (ticket.robloxUsername) setVerified(ticket.userId, ticket.robloxUsername);
 
