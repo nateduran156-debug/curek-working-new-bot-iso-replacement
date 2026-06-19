@@ -1066,6 +1066,48 @@ export async function handleRaidDeny(
 }
 
 
+export async function handleTagManagerMessage(message: Message): Promise<void> {
+  const allTickets = getTickets();
+  const ticket = allTickets[message.channelId];
+  if (!ticket) return;
+  addTicketMessage(message.channelId, {
+    author: message.author.username,
+    authorId: message.author.id,
+    content: message.content || "[no text content]",
+    timestamp: message.createdTimestamp,
+  });
+}
+
+
+export async function closeTicketByMessage(message: Message): Promise<void> {
+  const allTickets = getTickets();
+  const ticket = allTickets[message.channelId];
+
+  if (!ticket) {
+    await message.reply("no open ticket found in this channel.").catch(() => {});
+    return;
+  }
+
+  ticket.status = "closed";
+  ticket.closedAt = Date.now();
+  ticket.closedBy = message.author.username;
+  ticket.closedById = message.author.id;
+  setTicket(ticket.channelId, ticket);
+
+  const body = `ticket closed by <@${message.author.id}>`;
+  const c = cv2(0x4f46e5, body, "◈  ticket system");
+  await message.channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+
+  await postCloseLog(message.client, message.guild!, ticket);
+
+  setTimeout(async () => {
+    deleteTicket(ticket.channelId);
+    const channel = message.guild?.channels.cache.get(ticket.channelId);
+    await (channel as TextChannel)?.delete().catch(() => {});
+  }, 5000);
+}
+
+
 export async function autoCloseIdleTickets(client: Client): Promise<void> {
   const allTickets = getTickets();
   const IDLE_MS = 24 * 60 * 60 * 1000;
