@@ -42,6 +42,7 @@ import {
   isInGroup,
   giveRobloxTagRole,
   kickFromGroup,
+  RobloxGroup,
 } from "../utils/roblox.js";
 import { generateTranscript } from "../utils/transcript.js";
 import { logTicket } from "../utils/botLogger.js";
@@ -733,56 +734,82 @@ async function runGroupCheck(
   guildId: string,
   client: import("discord.js").Client,
 ): Promise<void> {
-  try {
-    const settings = getGuild(guildId);
-    const user = await getUserByUsername(robloxUsername).catch(() => null);
-    if (!user) return;
+  const settings = getGuild(guildId);
+  const user = await getUserByUsername(robloxUsername).catch(() => null);
 
-    const groups = await getUserGroups(user.id).catch(() => [] as import("../utils/roblox.js").RobloxGroup[]);
-    const mainGroupId = settings.groupId ?? "703716156";
-    const inGroup = await isInGroup(user.id, mainGroupId).catch(() => false);
+  if (!user) {
+    await channel.send({
+      components: [cv2WithHeader(0xf43f5e, "⚠️  Roblox Lookup Failed",
+        `couldn't find **${robloxUsername}** on Roblox — double-check the spelling before verifying.`,
+        "◈  group check")],
+      flags: MessageFlags.IsComponentsV2,
+    } as never).catch(() => {});
+    return;
+  }
 
-    const guildFlaggedIds = settings.flaggedGroups ?? [];
-    const ALWAYS_FLAGGED_IDS = new Set([
-      "650907997","16848719","214730861","33861944","495825805",
-      "862795072","32564331","265955381","15957207","1024109775",
-      "872867055","34546804","489845165","91960354","580313332",
-      "339952823","575770529","140364569",
-    ]);
+  const groups     = await getUserGroups(user.id).catch(() => [] as RobloxGroup[]);
+  const mainGroupId = settings.groupId ?? "703716156";
+  const inGroup    = await isInGroup(user.id, mainGroupId).catch(() => false);
 
-    const flaggedHits = groups.filter((g: import("../utils/roblox.js").RobloxGroup) =>
-      guildFlaggedIds.includes(String(g.group.id)) || ALWAYS_FLAGGED_IDS.has(String(g.group.id)),
-    );
+  const guildFlaggedIds = settings.flaggedGroups ?? [];
+  const ALWAYS_FLAGGED_IDS = new Set([
+    "650907997","16848719","214730861","33861944","495825805",
+    "862795072","32564331","265955381","15957207","1024109775",
+    "872867055","34546804","489845165","91960354","580313332",
+    "339952823","575770529","140364569",
+  ]);
 
-    const embeds: object[] = [];
+  const flaggedHits = groups.filter((g: RobloxGroup) =>
+    guildFlaggedIds.includes(String(g.group.id)) || ALWAYS_FLAGGED_IDS.has(String(g.group.id)),
+  );
 
-    const groupList = groups.length > 0
-      ? groups.map((g: import("../utils/roblox.js").RobloxGroup) => `• [${g.group.name}](https://www.roblox.com/groups/${g.group.id})`).join("\n")
-      : "• none";
+  const profileUrl = `https://www.roblox.com/users/${user.id}/profile`;
 
-    const profileUrl = `https://www.roblox.com/users/${user.id}/profile`;
-    const mainBody = `**[${user.name}](${profileUrl})**\n\n**Groups**\n${groupList}`;
-    const color = flaggedHits.length > 0 ? 0xf43f5e : inGroup ? 0x34d399 : 0x6366f1;
-    embeds.push(cv2(color, mainBody, "◈  group check"));
-
-    if (flaggedHits.length > 0) {
-      const flaggedLines = flaggedHits
-        .map((entry: import("../utils/roblox.js").RobloxGroup) => `• [${entry.group.name}](https://www.roblox.com/groups/${entry.group.id})`)
-        .join("\n");
-      embeds.push(cv2WithHeader(0xf43f5e, "⚠️  Flagged Groups",
-        `flagged groups — ask them to leave before verifying\n\n${flaggedLines}`,
-        "◈  verification system"));
+  // Build group list, truncated to avoid Discord's 4000-char component limit
+  const allGroupLines = groups.map((g: RobloxGroup) =>
+    `• [${g.group.name}](https://www.roblox.com/groups/${g.group.id})`);
+  let groupList = allGroupLines.join("\n");
+  if (groupList.length > 2800) {
+    const shown: string[] = [];
+    let len = 0;
+    for (const line of allGroupLines) {
+      if (len + line.length + 1 > 2700) { shown.push(`• … and ${allGroupLines.length - shown.length} more`); break; }
+      shown.push(line);
+      len += line.length + 1;
     }
+    groupList = shown.join("\n");
+  }
+  if (!groupList) groupList = "• none";
 
-    const groupBody = inGroup
-      ? `✓ **[${user.name}](${profileUrl})** is in the group and good to verify\n\n**group id**  ·  \`${mainGroupId}\`\n**link**      ·  [Join Here](https://www.roblox.com/communities/${mainGroupId})`
-      : `✗ **[${user.name}](${profileUrl})** is not in the group\n\n**group id**  ·  \`${mainGroupId}\`\n**link**      ·  [Join Here](https://www.roblox.com/communities/${mainGroupId})`;
-    embeds.push(cv2(color, groupBody));
+  const color = flaggedHits.length > 0 ? 0xf43f5e : inGroup ? 0x34d399 : 0x6366f1;
+  const mainBody = `**[${user.name}](${profileUrl})**\n\n**Groups (${groups.length})**\n${groupList}`;
 
-    for (const e of embeds) {
-      await channel.send({ components: [e as never], flags: MessageFlags.IsComponentsV2 });
-    }
-  } catch { /* ignore */ }
+  await channel.send({
+    components: [cv2(color, mainBody, "◈  group check")],
+    flags: MessageFlags.IsComponentsV2,
+  } as never).catch(() => {});
+
+  if (flaggedHits.length > 0) {
+    let flaggedLines = flaggedHits
+      .map((g: RobloxGroup) => `• [${g.group.name}](https://www.roblox.com/groups/${g.group.id})`)
+      .join("\n");
+    if (flaggedLines.length > 2800) flaggedLines = flaggedLines.slice(0, 2700) + "\n• …";
+    await channel.send({
+      components: [cv2WithHeader(0xf43f5e, "⚠️  Flagged Groups",
+        `ask them to leave before verifying\n\n${flaggedLines}`,
+        "◈  verification system")],
+      flags: MessageFlags.IsComponentsV2,
+    } as never).catch(() => {});
+  }
+
+  const groupBody = inGroup
+    ? `✓ **[${user.name}](${profileUrl})** is in the group — good to verify\n\n**group id**  ·  \`${mainGroupId}\`\n**link**      ·  [Join Here](https://www.roblox.com/communities/${mainGroupId})`
+    : `✗ **[${user.name}](${profileUrl})** is NOT in the group\n\n**group id**  ·  \`${mainGroupId}\`\n**link**      ·  [Join Here](https://www.roblox.com/communities/${mainGroupId})`;
+
+  await channel.send({
+    components: [cv2(color, groupBody)],
+    flags: MessageFlags.IsComponentsV2,
+  } as never).catch(() => {});
 }
 
 
