@@ -221,7 +221,11 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
 
       const loading = await message.reply(`looking up **${username}**...`);
       const user    = await getUserByUsername(username);
-      if (!user) return loading.edit({ content: `can't find **${username}** on roblox` });
+      if (!user) {
+        await loading.delete().catch(() => {});
+        await message.reply({ content: `can't find **${username}** on roblox` });
+        return;
+      }
 
       const rankInfo    = s.groupId ? await getGroupRank(user.id, s.groupId).catch(() => null) : null;
       const currentRank = rankInfo ? `${rankInfo.rankName} (rank ${rankInfo.rankId})` : "not in group";
@@ -232,7 +236,10 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         ? `roblox role **${tagInput}** assigned`
         : `roblox role failed: ${result.reason}`;
 
-      await loading.edit(_cv2h(WHITE, "Tag Given", [`**${user.name}**`, `rank: ${currentRank}`, `tag: \`${tagInput}\``, robloxNote].filter(Boolean).join("\n"), `given by ${message.author.username}`));
+      // Delete the plain loading message, then send a brand-new CV2 reply.
+      // Discord forbids adding IS_COMPONENTS_V2 to an existing non-CV2 message.
+      await loading.delete().catch(() => {});
+      await message.reply(_cv2h(WHITE, "Tag Given", [`**${user.name}**`, `rank: ${currentRank}`, `tag: \`${tagInput}\``, robloxNote].filter(Boolean).join("\n"), `given by ${message.author.username}`));
 
       const logChannelId = s.tagLogChannel ?? s.logChannel;
       if (logChannelId) {
@@ -391,9 +398,18 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
     case "gc": {
       const username = args[0];
       if (!username) { await message.reply(_usage("gc", PREFIX)); return; }
+
+      // Send a plain loading message so the user knows we're working.
+      // We'll DELETE it after fetching data and send a fresh CV2 reply —
+      // Discord does not allow editing a plain-text message to add the
+      // IS_COMPONENTS_V2 flag, so we cannot reuse the loading message.
       const loading  = await message.reply(`checking **${username}**...`);
       const user     = await getUserByUsername(username);
-      if (!user) return loading.edit({ content: `couldn't find **${username}** on Roblox` });
+      if (!user) {
+        await loading.delete().catch(() => {});
+        await message.reply({ content: `couldn't find **${username}** on Roblox` });
+        return;
+      }
 
       const s       = getGuild(guildId);
       const groupId = s.groupId ?? "703716156";
@@ -472,10 +488,13 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
 
       const navRow = buildNavRow(currentPage);
       const gcResult = buildGcEmbeds(currentPage);
-      const gcMsg = await loading.edit({
-        content: null,
+
+      // Delete the plain loading message, then send a brand-new CV2 reply.
+      // Discord forbids adding IS_COMPONENTS_V2 to an existing non-CV2 message.
+      await loading.delete().catch(() => {});
+      const gcMsg = await message.reply({
         components: [...(gcResult.components as never[]), ...(navRow ? [navRow] : [])],
-        flags: gcResult.flags,
+        flags: gcResult.flags as never,
       });
 
       if (totalPages <= 1) return;
@@ -489,11 +508,13 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         if (i.customId === "gc_prev" && currentPage > 0) currentPage--;
         else if (i.customId === "gc_next" && currentPage < totalPages - 1) currentPage++;
         const updatedRow = buildNavRow(currentPage);
-        const updated = buildGcEmbeds(currentPage); await i.update({ components: [...(updated.components as never[]), ...(updatedRow ? [updatedRow] : [])], flags: updated.flags } as never);
+        const updated = buildGcEmbeds(currentPage);
+        await i.update({ components: [...(updated.components as never[]), ...(updatedRow ? [updatedRow] : [])], flags: updated.flags } as never);
       });
 
       collector.on("end", () => {
-        gcMsg.edit({ components: [] }).catch(() => {});
+        // Keep the CV2 flag when clearing interactive components
+        gcMsg.edit({ components: gcResult.components as never[], flags: gcResult.flags as never }).catch(() => {});
       });
 
       return;
@@ -937,7 +958,8 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       if (!backup.files || typeof backup.files !== "object") { await loading.edit({ content: "that doesn't look like a valid /curek backup" }); return; }
       const restored = restoreBackup(backup);
       await logInfo(guildId, "Backup Restored", `<@${message.author.id}> restored a backup (${restored} files)`);
-      await loading.edit(_cv2(WHITE, `restored **${restored}** files`, message.guild!.name));
+      await loading.delete().catch(() => {});
+      await message.reply(_cv2(WHITE, `restored **${restored}** files`, message.guild!.name));
       return;
     }
 
@@ -1029,7 +1051,8 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
           results.push(`**${g.name}** (\`${g.groupId}\`) — **${pending.length}** pending\n${names}`);
         }
       }
-      await loading.edit(_cv2h(WHITE, "Pending Join Requests", results.join("\n\n"), message.guild!.name));
+      await loading.delete().catch(() => {});
+      await message.reply(_cv2h(WHITE, "Pending Join Requests", results.join("\n\n"), message.guild!.name));
       return;
     }
 
@@ -1048,10 +1071,19 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       }
       const loading = await message.reply(`looking up **${username}** on Roblox...`);
       const user = await getUserByUsername(username);
-      if (!user) return loading.edit({ content: `couldn't find **${username}** on Roblox.` });
+      if (!user) {
+        await loading.delete().catch(() => {});
+        await message.reply({ content: `couldn't find **${username}** on Roblox.` });
+        return;
+      }
       const result = await acceptJoinRequest(group.groupId, user.id);
-      if (!result.ok) return loading.edit({ content: `failed to accept the request: ${result.reason}` });
-      await loading.edit(_cv2(WHITE, `**${user.name}**'s join request to **${group.name}** accepted by <@${message.author.id}>`, message.guild!.name));
+      if (!result.ok) {
+        await loading.delete().catch(() => {});
+        await message.reply({ content: `failed to accept the request: ${result.reason}` });
+        return;
+      }
+      await loading.delete().catch(() => {});
+      await message.reply(_cv2(WHITE, `**${user.name}**'s join request to **${group.name}** accepted by <@${message.author.id}>`, message.guild!.name));
       await logCommand(guildId, "Command: .accept",
         `<@${message.author.id}> accepted **${user.name}** into **${group.name}**`,
         [{ name: "Roblox", value: user.name, inline: true }, { name: "Group", value: group.name, inline: true }],
@@ -1089,10 +1121,13 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       const loading = await message.reply("ending queue...");
       const result = await endQueue(client, guildId);
       if (!result.ok) {
-        return loading.edit({ content: `couldn't end the queue: ${result.reason}` });
+        await loading.edit({ content: `couldn't end the queue: ${result.reason}` });
+        return;
       }
+      await loading.delete().catch(() => {});
       if (result.entries.length === 0) {
-        return loading.edit(_cv2h(WHITE, "Queue Ended", "nobody joined the queue during this session", message.guild!.name));
+        await message.reply(_cv2h(WHITE, "Queue Ended", "nobody joined the queue during this session", message.guild!.name));
+        return;
       }
       const lines = result.entries.map((e, i) => `\`${i + 1}.\` **${e.name}** (<@${e.id}>)`).join("\n");
       const rankUpLines = result.rankUps.length > 0
@@ -1100,7 +1135,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         : "";
       const s = getGuild(guildId);
       const channelNote = s.queueChannel ? `\n\nfull results posted to <#${s.queueChannel}>` : "";
-      return loading.edit(_cv2h(WHITE, `Queue Ended — ${result.entries.length} joined`, ((lines + rankUpLines).slice(0, 1800) + channelNote), `each member received +${result.pointsPerJoin} raid point${result.pointsPerJoin !== 1 ? "s" : ""}`));
+      await message.reply(_cv2h(WHITE, `Queue Ended — ${result.entries.length} joined`, ((lines + rankUpLines).slice(0, 1800) + channelNote), `each member received +${result.pointsPerJoin} raid point${result.pointsPerJoin !== 1 ? "s" : ""}`));
     }
 
     case "queuelog": {
@@ -1202,7 +1237,9 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         results.push(`**${role.name}**: ${wiped}/${users.length} set to Member`);
       }
 
-      return loading.edit(_cv2h(WHITE, `Tag Wipe Complete — ${totalWiped} users reset`, results.join("\n") || "no users found with those roles.", `group: ${WIPE_GROUP_ID}`));
+      await loading.delete().catch(() => {});
+      await message.reply(_cv2h(WHITE, `Tag Wipe Complete — ${totalWiped} users reset`, results.join("\n") || "no users found with those roles.", `group: ${WIPE_GROUP_ID}`));
+      return;
     }
 
     default:
