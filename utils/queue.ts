@@ -1,4 +1,5 @@
 import type { Client, TextChannel } from "discord.js";
+import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags } from "discord.js";
 import { getGuild, getPoints, savePoints } from "./storage.js";
 import { refreshLeaderboard } from "./leaderboard.js";
 import { logPoints } from "./botLogger.js";
@@ -19,7 +20,7 @@ function _cv2(color: number, body: string, footer?: string) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
   }
-  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+  return { components: [c], flags: MessageFlags.IsComponentsV2 } as never;
 }
 function _cv2h(color: number, header: string, body: string, footer?: string) {
   const c = new ContainerBuilder().setAccentColor(color);
@@ -30,7 +31,7 @@ function _cv2h(color: number, header: string, body: string, footer?: string) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
   }
-  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+  return { components: [c], flags: MessageFlags.IsComponentsV2 } as never;
 }
 
 const activeSessions = new Map<string, QueueSession>();

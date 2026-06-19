@@ -24,7 +24,7 @@ function _cv2(color: number, body: string, footer?: string) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
   }
-  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+  return { components: [c], flags: MessageFlags.IsComponentsV2 } as never;
 }
 function _cv2h(color: number, header: string, body: string, footer?: string) {
   const c = new ContainerBuilder().setAccentColor(color);
@@ -35,7 +35,7 @@ function _cv2h(color: number, header: string, body: string, footer?: string) {
     c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
     c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
   }
-  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+  return { components: [c], flags: MessageFlags.IsComponentsV2 } as never;
 }
 
 const WHITE    = 0xffffff;
@@ -380,7 +380,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       // FIX: was `flagged.length` (undefined) — now correctly uses `combined.length`
       await loading.edit({
         content: null,
-        ..._cv2h(WHITE, `Flagged Groups (${combined.length})`, pages[0]!, "◈  flagged groups"),
+        ...(_cv2h(WHITE, `Flagged Groups (${combined.length})`, pages[0]!, "◈  flagged groups") as object),
       });
       for (let p = 1; p < pages.length; p++) {
         await (message.channel as TextChannel).send(_cv2(WHITE, pages[p]!, `page ${p + 1}/${pages.length}`));
@@ -704,7 +704,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         pages.push(lines.slice(i, i + 20).join("\n"));
       }
       for (let pi = 0; pi < pages.length; pi++) {
-        await message.channel.send(pi === 0 ? _cv2h(WHITE, `Registered Users (${entries.length})`, pages[pi]!, message.guild?.name ?? "bot") : _cv2(WHITE, pages[pi]!, `page ${pi + 1}/${pages.length}`));
+        await (message.channel as import("discord.js").TextChannel).send(pi === 0 ? _cv2h(WHITE, `Registered Users (${entries.length})`, pages[pi]!, message.guild?.name ?? "bot") : _cv2(WHITE, pages[pi]!, `page ${pi + 1}/${pages.length}`));
       }
       return;
     }
@@ -764,7 +764,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         new ButtonBuilder().setCustomId("resetall_confirm").setLabel("reset all points").setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId("resetall_cancel").setLabel("cancel").setStyle(ButtonStyle.Secondary),
       );
-      const msg = await message.reply({ ..._cv2h(WHITE, "Reset All Points", "this wipes **every** raid point in the server and can't be undone", `requested by ${message.author.username}`), components: [row] });
+      const msg = await message.reply({ ...(_cv2h(WHITE, "Reset All Points", "this wipes **every** raid point in the server and can't be undone", `requested by ${message.author.username}`) as object), components: [row] } as never);
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === message.author.id, time: 15000 });
       collector.on("collect", async (i) => {
         if (i.customId === "resetall_confirm") {
@@ -784,9 +784,9 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
           }
 
           await logPoints(guildId, "Points Reset", `<@${message.author.id}> wiped all raid points and rank roles in this server`);
-          await i.update({ ..._cv2h(WHITE, "Done", "all raid points cleared and all rank roles removed", `done by ${message.author.username}`), components: [] });
+          await i.update({ ...(_cv2h(WHITE, "Done", "all raid points cleared and all rank roles removed", `done by ${message.author.username}`) as object), components: [] } as never);
         } else {
-          await i.update({ ..._cv2h(WHITE, "Cancelled", "nothing changed", "◈  points"), components: [] });
+          await i.update({ ...(_cv2h(WHITE, "Cancelled", "nothing changed", "◈  points") as object), components: [] } as never);
         }
         collector.stop();
       });
@@ -919,7 +919,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       const buffer = Buffer.from(JSON.stringify(backup, null, 2), "utf8");
       await logInfo(guildId, "Backup Created", `<@${message.author.id}> created a data backup (${Object.keys(backup.files).length} files)`);
       await message.reply({
-        ..._cv2(WHITE, `backed up **${Object.keys(backup.files).length}** files`, message.guild!.name),
+        ...(_cv2(WHITE, `backed up **${Object.keys(backup.files).length}** files`, message.guild!.name) as object),
         files: [new AttachmentBuilder(buffer, { name: `x2k-backup-${Date.now()}.json` })],
       });
       return;
@@ -1076,7 +1076,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
           .setLabel("JOIN")
           .setStyle(ButtonStyle.Secondary),
       );
-      return message.channel.send({ ..._cv2(WHITE, "**JOIN QUEUE IF IN QUEUE/INGAME**", "run .endqueue to close the queue"), components: [queueRow] });
+      return (message.channel as import("discord.js").TextChannel).send({ ...(_cv2(WHITE, "**JOIN QUEUE IF IN QUEUE/INGAME**", "run .endqueue to close the queue") as object), components: [queueRow] } as never);
     }
 
     case "endqueue": {

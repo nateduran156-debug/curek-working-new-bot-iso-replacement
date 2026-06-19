@@ -1096,7 +1096,7 @@ export async function closeTicketByMessage(message: Message): Promise<void> {
 
   const body = `ticket closed by <@${message.author.id}>`;
   const c = cv2(0x4f46e5, body, "◈  ticket system");
-  await message.channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
+  await (message.channel as import("discord.js").TextChannel).send({ components: [c], flags: MessageFlags.IsComponentsV2 } as never).catch(() => {});
 
   await postCloseLog(message.client, message.guild!, ticket);
 

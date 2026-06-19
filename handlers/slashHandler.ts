@@ -151,7 +151,7 @@ export async function handleSlashCommand(i: ChatInputCommandInteraction): Promis
   switch (i.commandName) {
 
         case "help": {
-      return i.reply({ ...(buildHelpMessage("setup") as Parameters<typeof i.reply>[0]) });
+      return i.reply(buildHelpMessage("setup") as never);
     }
 
         case "cookie": {
@@ -864,9 +864,8 @@ export async function handleSlashCommand(i: ChatInputCommandInteraction): Promis
 
         case "backup": {
       if (!isOwner(i)) return i.reply({ content: "only the bot owner can do that", ephemeral: true });
-      const label = i.options.getString("label") ?? undefined;
-      const file  = createBackup(label);
-      const att   = new AttachmentBuilder(file, { name: `backup-${Date.now()}.json` });
+      const file  = createBackup();
+      const att   = new AttachmentBuilder(Buffer.from(JSON.stringify(file, null, 2)), { name: `backup-${Date.now()}.json` });
       return i.reply({ content: "here's your backup — save it somewhere safe.", files: [att], ephemeral: true });
     }
 
@@ -891,8 +890,8 @@ export async function handleSlashCommand(i: ChatInputCommandInteraction): Promis
       if (sub === "add") {
         const username = i.options.getString("username", true).trim();
         const reason   = i.options.getString("reason") ?? "no reason given";
-        const ok = addToBlacklist(username, reason, i.user.id);
-        if (!ok) return i.reply(send(cv2(RED, `\`${username}\` is already blacklisted`, "◈  blacklist"), []) as Parameters<typeof i.reply>[0]);
+        if (isBlacklisted(username)) return i.reply(send(cv2(RED, `\`${username}\` is already blacklisted`, "◈  blacklist"), []) as Parameters<typeof i.reply>[0]);
+        addToBlacklist(username, { reason, addedBy: i.user.username, addedById: i.user.id, addedAt: Date.now() });
         await logSetup(guildId, "Blacklist: User Added", `<@${i.user.id}> blacklisted **${username}** — reason: ${reason}`);
         const body = `**added**   ·  \`${username}\`\n**reason**  ·  ${reason}\n**by**      ·  <@${i.user.id}>`;
         return i.reply({ ...send(cv2h(RED, "Blacklisted", body, "◈  blacklist")), ephemeral: true } as Parameters<typeof i.reply>[0]);

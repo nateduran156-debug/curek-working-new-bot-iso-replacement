@@ -71,9 +71,13 @@ export async function getUserByUsername(
 }
 
 // Get all groups a roblox user is in
+export interface RobloxGroup {
+  group: { id: number; name: string };
+}
+
 export async function getUserGroups(
   userId: number,
-): Promise<Array<{ group: { id: number; name: string } }>> {
+): Promise<RobloxGroup[]> {
   try {
     const response = await fetch(`https://groups.roblox.com/v2/users/${userId}/groups/roles`);
     const data = (await response.json()) as {

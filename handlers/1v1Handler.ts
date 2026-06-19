@@ -705,7 +705,7 @@ export async function handleLogWin(
     loserSpot,
     loserRemoved,
     autoForfeit: false,
-    challengeId: challenge?.id ?? null,
+    challengeId: challenge?.id ?? "",
   });
 
   if (challenge) {
@@ -780,7 +780,7 @@ export async function handleLogLoss(
     loserSpot,
     loserRemoved: false,
     autoForfeit: false,
-    challengeId: challenge?.id ?? null,
+    challengeId: challenge?.id ?? "",
   });
 
   if (challenge) {
@@ -862,7 +862,7 @@ export async function handle1v1Set(interaction: ChatInputCommandInteraction): Pr
   if (sub === "set") {
     const spot = interaction.options.getInteger("spot", true);
     const user = interaction.options.getUser("user", true);
-    setPlayerAtSpot(guildId, spot, user.id);
+    setPlayerAtSpot(guildId, spot, { userId: user.id, spot, cooldownUntil: null, pendingChallengeId: null });
     const c = cv2WithHeader(GREEN, "Spot Set", `**spot**  ·  \`#${spot}\`\n**user**  ·  <@${user.id}>`, "◈  1v1 admin");
     await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
     await refreshLiveLeaderboard(interaction.client, guildId);
