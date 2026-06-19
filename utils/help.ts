@@ -2,10 +2,12 @@ import {
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  MessageFlags,
 } from "discord.js";
-
-const SEP = "───────────────────────────────";
-const DARK_RED = 0x8B0000;
 
 interface CommandEntry {
   name: string;
@@ -163,19 +165,27 @@ function buildCategoryButtons(selected: string): ActionRowBuilder<ButtonBuilder>
   return rows;
 }
 
-export function buildHelpMessage(category: string = DEFAULT_CATEGORY): { embeds: object[]; components: unknown[] } {
+export function buildHelpMessage(category: string = DEFAULT_CATEGORY): { components: object[]; flags: number } {
   const cat = CATEGORIES[category] ?? CATEGORIES[DEFAULT_CATEGORY]!;
+
+  const c = new ContainerBuilder().setAccentColor(0x8B0000);
+  c.addTextDisplayComponents(
+    new TextDisplayBuilder().setContent(`**${cat.label}**  ·  ${cat.description}`),
+  );
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+
   const commandLines = cat.commands
-    .map((c) => `\`${c.name}\`\n${c.desc}`)
+    .map((cmd) => `\`${cmd.name}\`\n${cmd.desc}`)
     .join("\n\n");
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(commandLines));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ◈  /curek`));
+
+  const buttons = buildCategoryButtons(category);
+
   return {
-    embeds: [{
-      color: DARK_RED,
-      description: `${SEP}\n**${cat.label}**  —  ${cat.description}\n${SEP}\n\n${commandLines}\n\n${SEP}`,
-      footer: { text: "/curek" },
-      timestamp: new Date().toISOString(),
-    }],
-    components: buildCategoryButtons(category),
+    components: [c, ...buttons],
+    flags: MessageFlags.IsComponentsV2,
   };
 }
 

@@ -1,5 +1,15 @@
 import type { Client, GuildMember } from "discord.js";
-import { EmbedBuilder, ActivityType, type TextChannel } from "discord.js";
+import {
+  ActivityType,
+  type TextChannel,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  SectionBuilder,
+  ThumbnailBuilder,
+  MessageFlags,
+} from "discord.js";
 import {
   isVanityWatcherEnabled,
   getVanityLogChannel,
@@ -11,7 +21,6 @@ import {
   isMemberFlagged,
 } from "../utils/vanityStorage.js";
 
-// Extract all /word patterns from a custom status string
 function extractVanities(status: string): string[] {
   const matches = status.match(/\/[a-zA-Z0-9_]+/g) ?? [];
   return matches.map(m => m.slice(1).toLowerCase());
@@ -52,28 +61,24 @@ export async function checkMemberVanity(client: Client, member: GuildMember): Pr
       const channel = await client.channels.fetch(logChannelId).catch(() => null) as TextChannel | null;
       if (!channel?.isTextBased()) return;
 
-      const SEP = "───────────────────────────────";
-      const embed = new EmbedBuilder()
-        .setColor(0x6366f1)
-        .setAuthor({
-          name: `${member.user.username}  ·  vanity detected`,
-          iconURL: member.user.displayAvatarURL(),
-        })
-        .setDescription(
-          `${SEP}\n` +
-          `  repping   **/${vanity}**\n` +
-          `  status    \`${status}\`\n` +
-          `  id        \`${member.id}\`\n` +
-          `${SEP}`
-        )
-        .setThumbnail(member.user.displayAvatarURL())
-        .setFooter({ text: "◈  vanity system" })
-        .setTimestamp();
+      const avatarUrl = member.user.displayAvatarURL({ size: 256 });
 
-      // Determine ping content:
-      // - silent vanity → no ping, just post the embed
-      // - ping role configured → ping that role
-      // - no role configured → @everyone
+      const c = new ContainerBuilder().setAccentColor(0x6366f1);
+
+      const section = new SectionBuilder()
+        .addTextDisplayComponents(
+          new TextDisplayBuilder().setContent(
+            `**${member.user.username}**  ·  vanity detected\n\n**repping**  ·  \`/${vanity}\`\n**status**  ·  \`${status}\`\n**id**  ·  \`${member.id}\``,
+          ),
+        )
+        .setThumbnailAccessory(
+          new ThumbnailBuilder().setURL(avatarUrl),
+        );
+
+      c.addSectionComponents(section);
+      c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+      c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ◈  vanity system`));
+
       const isSilent = silentVanities.includes(vanity);
       const pingContent = isSilent
         ? undefined
@@ -82,11 +87,13 @@ export async function checkMemberVanity(client: Client, member: GuildMember): Pr
           : "@everyone";
 
       if (pingContent) {
-        await channel.send({ content: pingContent, embeds: [embed] }).catch(() =>
-          channel.send({ embeds: [embed] })
-        );
+        await channel.send({
+          content: pingContent,
+          components: [c],
+          flags: MessageFlags.IsComponentsV2,
+        }).catch(() => channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }));
       } else {
-        await channel.send({ embeds: [embed] }).catch(() => {});
+        await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       }
     } catch {
       // Channel inaccessible — silently skip

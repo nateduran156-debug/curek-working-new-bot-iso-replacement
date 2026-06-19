@@ -3,6 +3,11 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  MessageFlags,
   PermissionFlagsBits,
   type Client,
   type Guild,
@@ -54,8 +59,7 @@ import {
 import { getGuild, getWhitelist } from "../utils/storage.js";
 import { logInfo } from "../utils/botLogger.js";
 
-const SEP  = "———————————————————";
-const DARK = 0x1a1a2e;
+const DARK  = 0x1a1a2e;
 const GREEN = 0x2ecc71;
 const RED   = 0xe74c3c;
 const GOLD  = 0xf1c40f;
@@ -85,7 +89,29 @@ function canManage1v1(member: GuildMember | null, guildId: string): boolean {
   return (wl["bot"] ?? []).includes(member.id);
 }
 
-// ── live leaderboard refresh ──────────────────────────────────────────────────
+
+function cv2(color: number, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return c;
+}
+
+function cv2WithHeader(color: number, header: string, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${header}**`));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return c;
+}
+
 
 async function refreshLiveLeaderboard(client: Client, guildId: string): Promise<void> {
   try {
@@ -97,17 +123,16 @@ async function refreshLiveLeaderboard(client: Client, guildId: string): Promise<
     if (!ch) return;
     const msg = await ch.messages.fetch(live.messageId).catch(() => null);
     if (!msg) return;
-    const embed = build1v1Embed(guildId);
-    await msg.edit({ embeds: [embed] });
+    const payload = build1v1Embed(guildId);
+    await msg.edit(payload as Parameters<typeof msg.edit>[0]);
   } catch { /* ignore */ }
 }
 
-// ── post match result to log channel ─────────────────────────────────────────
 
 async function postMatchResult(
   client: Client,
   guildId: string,
-  embed: object,
+  payload: { components: object[]; flags: number },
 ): Promise<void> {
   try {
     const channelId = getMatchLogChannel(guildId);
@@ -116,7 +141,7 @@ async function postMatchResult(
     if (!guild) return;
     const ch = guild.channels.cache.get(channelId) as TextChannel | undefined;
     if (!ch) return;
-    await ch.send({ embeds: [embed] });
+    await ch.send(payload as never);
   } catch { /* ignore */ }
 }
 
@@ -149,7 +174,7 @@ async function postTicketMessages(
     if (lines.length === 0) return;
 
     const chunks: string[] = [];
-    let current = `**#${ticketChannel.name} — messages**\n${SEP}\n`;
+    let current = `**#${ticketChannel.name} — messages**\n`;
     for (const line of lines) {
       if (current.length + line.length + 2 > 1900) {
         chunks.push(current);
@@ -165,17 +190,15 @@ async function postTicketMessages(
   } catch { /* ignore */ }
 }
 
-// ── leaderboard embed ─────────────────────────────────────────────────────────
 
-export function build1v1Embed(guildId: string): object {
+export function build1v1Embed(guildId: string): { components: object[]; flags: number } {
   const lb = getLeaderboard(guildId);
   const lines: string[] = [];
 
   for (let spot = 1; spot <= 5; spot++) {
     const player = lb[String(spot)];
-    lines.push(SEP);
     if (!player) {
-      lines.push(`✅  **Spot #${spot}** — Open`);
+      lines.push(`\`#${spot}\`  ✅  **Open**`);
     } else {
       const onCD = isOnCooldown(player);
       let icon = "✅";
@@ -187,38 +210,33 @@ export function build1v1Embed(guildId: string): object {
         const ch = getChallenge(player.pendingChallengeId);
         if (ch?.status === "accepted") {
           icon = "⚔️";
-          statusTag = "  *(match in progress)*";
+          statusTag = "  *(in progress)*";
         } else {
           icon = "🕐";
-          statusTag = "  *(challenge pending)*";
+          statusTag = "  *(pending)*";
         }
       }
 
-      let line = `${icon}  <@${player.userId}> — Spot #${spot}${statusTag}`;
+      let line = `\`#${spot}\`  ${icon}  <@${player.userId}>${statusTag}`;
       if (onCD && player.cooldownUntil) {
-        const days = player.cooldownUntil === Date.now() + ONE_DAY_MS ? "1d" : "2d";
-        line += `  📆 ${fmtDate(player.cooldownUntil)}`;
+        line += `  ·  📆 ${fmtDate(player.cooldownUntil)}`;
       }
       lines.push(line);
     }
   }
-  lines.push(SEP);
 
-  return {
-    title: "/FAZEE TOP 5 PLAYERS",
-    color: DARK,
-    description: lines.join("\n"),
-    footer: {
-      text: [
-        "🛡️ cooldown  |  ✅ can be challenged  |  🕐 challenge pending  |  ⚔️ match in progress",
-        "loser: 2 day cooldown  ·  winner: 1 day cooldown  ·  48hr no-result = auto forfeit",
-      ].join("\n"),
-    },
-    timestamp: ts(),
-  };
+  const c = new ContainerBuilder().setAccentColor(DARK);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**◈  TOP 5 LEADERBOARD**`));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(lines.join("\n")));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(
+    `🛡️ cooldown  ·  ✅ open  ·  🕐 pending  ·  ⚔️ in progress\n-# loser: 2d cooldown  ·  winner: 1d cooldown  ·  48h no-result = auto forfeit`,
+  ));
+
+  return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
-// ── /challenge command ────────────────────────────────────────────────────────
 
 export async function handleChallengeCommand(
   interaction: ChatInputCommandInteraction,
@@ -228,7 +246,7 @@ export async function handleChallengeCommand(
     return;
   }
 
-  const guildId  = interaction.guild.id;
+  const guildId = interaction.guild.id;
 
   if (getIsFrozen(guildId)) {
     await interaction.reply({ content: "the 1v1 leaderboard is currently frozen — no new challenges can be made.", ephemeral: true });
@@ -321,23 +339,17 @@ export async function handleChallengeCommand(
 
   const spotLabel = challengerEntry ? `Spot #${challengerEntry.spot}` : "Unranked";
 
-  const embed = {
-    color: GOLD,
-    description: [
-      SEP,
-      `  **1v1 Challenge**`,
-      SEP,
-      `  <@${interaction.user.id}>  (${spotLabel})  →  <@${opponent.id}>  (Spot #${opponentSpot})`,
-      SEP,
-      `  <@${opponent.id}> accept or decline below`,
-      `  you got 48hrs to respond or this gets auto-cancelled`,
-      SEP,
-    ].join("\n"),
-    footer: { text: "◈  1v1" },
-    timestamp: ts(),
-  };
+  const body = [
+    `**challenger**  ·  <@${interaction.user.id}>  (${spotLabel})`,
+    `**opponent**    ·  <@${opponent.id}>  (Spot #${opponentSpot})`,
+    ``,
+    `<@${opponent.id}> — accept or decline below`,
+    `48h to respond or this gets auto-cancelled`,
+  ].join("\n");
 
-  await interaction.reply({ embeds: [embed], components: [row] });
+  const c = cv2WithHeader(GOLD, "1v1 Challenge", body, "◈  1v1");
+
+  await interaction.reply({ components: [c, row], flags: MessageFlags.IsComponentsV2 });
   const msg = await interaction.fetchReply();
 
   createChallenge({
@@ -364,7 +376,6 @@ export async function handleChallengeCommand(
   saveLeaderboard(guildId, lb);
 }
 
-// ── accept button ─────────────────────────────────────────────────────────────
 
 export async function handleChallengeAccept(interaction: ButtonInteraction, challengeId: string): Promise<void> {
   const challenge = getChallenge(challengeId);
@@ -379,27 +390,18 @@ export async function handleChallengeAccept(interaction: ButtonInteraction, chal
 
   updateChallenge(challengeId, { status: "accepted" });
 
-  await interaction.update({
-    embeds: [{
-      color: GREEN,
-      description: [
-        SEP,
-        `  **Challenge Accepted**`,
-        SEP,
-        `  <@${challenge.challengerId}> vs <@${challenge.opponentId}>  (Spot #${challenge.opponentSpot})`,
-        SEP,
-        `  go play your match then open a log ticket to submit proof`,
-        `  you got 48hrs — if no result is logged the challenger takes the auto loss`,
-        SEP,
-      ].join("\n"),
-      footer: { text: "◈  1v1" },
-      timestamp: ts(),
-    }],
-    components: [],
-  });
+  const body = [
+    `**challenger**  ·  <@${challenge.challengerId}>`,
+    `**opponent**    ·  <@${challenge.opponentId}>  (Spot #${challenge.opponentSpot})`,
+    ``,
+    `go play your match then open a log ticket to submit proof`,
+    `48h — if no result is logged the challenger takes the auto loss`,
+  ].join("\n");
+
+  const c = cv2WithHeader(GREEN, "Challenge Accepted", body, "◈  1v1");
+  await interaction.update({ components: [c], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── decline button ────────────────────────────────────────────────────────────
 
 export async function handleChallengeDecline(interaction: ButtonInteraction, challengeId: string): Promise<void> {
   const challenge = getChallenge(challengeId);
@@ -415,31 +417,17 @@ export async function handleChallengeDecline(interaction: ButtonInteraction, cha
   clearChallengeFromPlayers(challenge.guildId, challenge);
   deleteChallenge(challengeId);
 
-  await interaction.update({
-    embeds: [{
-      color: RED,
-      description: [
-        SEP,
-        `  **Challenge Declined**`,
-        SEP,
-        `  <@${challenge.opponentId}> declined the challenge from <@${challenge.challengerId}>`,
-        SEP,
-      ].join("\n"),
-      footer: { text: "◈  1v1 system" },
-      timestamp: ts(),
-    }],
-    components: [],
-  });
+  const body = `<@${challenge.opponentId}> declined the challenge from <@${challenge.challengerId}>`;
+  const c = cv2WithHeader(RED, "Challenge Declined", body, "◈  1v1 system");
+  await interaction.update({ components: [c], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── resolve log ticket category ───────────────────────────────────────────────
 
 async function resolveLogCategory(guild: Guild, settings: ReturnType<typeof getGuild>) {
   const catId = settings.logTicketCategoryId ?? FALLBACK_LOG_CATEGORY_ID;
   return guild.channels.cache.get(catId) ?? await guild.channels.fetch(catId).catch(() => null);
 }
 
-// ── build staff permission overwrites for log tickets ─────────────────────────
 
 function buildStaffPerms(guild: Guild, settings: ReturnType<typeof getGuild>): import("discord.js").OverwriteResolvable[] {
   const allow = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory];
@@ -457,7 +445,6 @@ function buildStaffPerms(guild: Guild, settings: ReturnType<typeof getGuild>): i
   return perms;
 }
 
-// ── shared log ticket (opened when both players click) ────────────────────────
 
 async function openSharedLogTicket(
   interaction: ButtonInteraction | ChatInputCommandInteraction,
@@ -515,25 +502,20 @@ async function openSharedLogTicket(
   if (settings.pointsSupportRole) pingSet.add(`<@&${settings.pointsSupportRole}>`);
   if (settings.pointsRole)        pingSet.add(`<@&${settings.pointsRole}>`);
 
+  const body = [
+    `**challenger**  ·  <@${challenge.challengerId}>`,
+    `**opponent**    ·  <@${challenge.opponentId}>`,
+    `**spot**        ·  \`#${challenge.opponentSpot}\``,
+    ``,
+    `drop your screenshot proof above — staff will log the result`,
+  ].join("\n");
+
+  const c = cv2WithHeader(DARK, "1v1 Log Ticket", body, "◈  1v1 log");
+
   await ch.send({
     content: [...pingSet].join(" "),
-    embeds: [{
-      color: DARK,
-      description: [
-        SEP,
-        `  **1v1 Log Ticket**`,
-        SEP,
-        `  challenger  ·  <@${challenge.challengerId}>`,
-        `  opponent    ·  <@${challenge.opponentId}>`,
-        `  spot        ·  **#${challenge.opponentSpot}**`,
-        SEP,
-        `  drop your screenshot proof above — staff will log the result`,
-        SEP,
-      ].join("\n"),
-      footer: { text: "◈  1v1 log" },
-      timestamp: ts(),
-    }],
-    components: [row],
+    components: [c, row],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   const replyFn = interaction.isButton()
@@ -549,7 +531,6 @@ async function openSharedLogTicket(
   }
 }
 
-// ── log ticket ────────────────────────────────────────────────────────────────
 
 export async function openLogTicket(
   interaction: ButtonInteraction | ChatInputCommandInteraction,
@@ -563,7 +544,6 @@ export async function openLogTicket(
     ? (interaction as ButtonInteraction).reply.bind(interaction)
     : (interaction as ChatInputCommandInteraction).reply.bind(interaction);
 
-  // ── whitelist gate ────────────────────────────────────────────────────────
   const wl = getWhitelist();
   const whitelisted = (wl["bot"] ?? []).includes(userId);
   if (!OWNER_IDS.has(userId) && !whitelisted) {
@@ -571,7 +551,6 @@ export async function openLogTicket(
     return;
   }
 
-  // ── shared ticket: if this user is in an accepted (in-progress) match ─────
   const activeChallenge = getActiveChallengeForUser(guild.id, userId);
 
   if (activeChallenge) {
@@ -601,7 +580,6 @@ export async function openLogTicket(
     return;
   }
 
-  // ── solo ticket: no active accepted match ──────────────────────────────────
   const channelPerms: import("discord.js").OverwriteResolvable[] = [
     { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
     { id: userId, allow },
@@ -644,404 +622,287 @@ export async function openLogTicket(
 
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(winBtn, lossBtn, disputeBtn, closeBtn);
 
-  const pingParts: string[] = [`<@${userId}>`];
-  if (settings.pointsSupportRole) pingParts.push(`<@&${settings.pointsSupportRole}>`);
-  if (settings.pointsRole)        pingParts.push(`<@&${settings.pointsRole}>`);
+  const pingSet = new Set([`<@${userId}>`]);
+  if (settings.pointsSupportRole) pingSet.add(`<@&${settings.pointsSupportRole}>`);
+  if (settings.pointsRole)        pingSet.add(`<@&${settings.pointsRole}>`);
 
-  const challengeInfo = challengeActive
-    ? [
-        `  active challenge  ·  <@${challengeActive.challengerId}> vs <@${challengeActive.opponentId}>`,
-        `  spot in play      ·  **#${challengeActive.opponentSpot}**`,
-      ]
-    : [`  no active challenge found — staff can still manually update ranks`];
+  const body = [
+    `**user**    ·  <@${userId}>`,
+    ...(challengeActive ? [
+      `**vs**      ·  <@${challengeActive.challengerId === userId ? challengeActive.opponentId : challengeActive.challengerId}>`,
+      `**spot**    ·  \`#${challengeActive.opponentSpot}\``,
+    ] : []),
+    ``,
+    `drop your screenshot proof above — staff will log the result`,
+  ].join("\n");
+
+  const c = cv2WithHeader(DARK, "1v1 Log Ticket", body, "◈  1v1 log");
 
   await ch.send({
-    content: pingParts.join(" "),
-    embeds: [{
-      color: DARK,
-      description: [
-        SEP,
-        `  **1v1 Log Ticket**`,
-        SEP,
-        `  submitted by  ·  <@${userId}>`,
-        ...challengeInfo,
-        SEP,
-        `  drop your screenshot proof above — staff will log the result`,
-        SEP,
-      ].join("\n"),
-      footer: { text: "◈  1v1 log" },
-      timestamp: ts(),
-    }],
-    components: [row],
+    content: [...pingSet].join(" "),
+    components: [c, row],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   await replyFn({ content: `log ticket opened: <#${ch.id}>`, ephemeral: true });
 }
 
-// ── log win handler ───────────────────────────────────────────────────────────
 
 export async function handleLogWin(
   interaction: ButtonInteraction,
   submitterId: string,
   challengeId: string,
 ): Promise<void> {
-  if (!interaction.guild) return;
+  const guild = interaction.guild;
+  if (!guild) return;
+
   const member = interaction.member as GuildMember | null;
-  if (!canManage1v1(member, interaction.guild.id)) {
-    await interaction.reply({ content: "you're not staff, you can't do this.", ephemeral: true });
+  if (!canManage1v1(member, guild.id)) {
+    await interaction.reply({ content: "you don't have permission.", ephemeral: true });
     return;
   }
 
+  const guildId = guild.id;
   const challenge = challengeId !== "none" ? getChallenge(challengeId) : null;
-  if (!challenge) {
-    await interaction.reply({ content: "no challenge linked to this ticket. use `/1v1set` to update ranks manually.", ephemeral: true });
-    return;
+
+  let winnerId: string;
+  let loserId: string;
+  let winnerSpot: number | null = null;
+  let loserSpot: number | null = null;
+
+  if (challenge) {
+    winnerId  = submitterId;
+    loserId   = challenge.challengerId === submitterId ? challenge.opponentId : challenge.challengerId;
+    winnerSpot = submitterId === challenge.challengerId ? challenge.opponentSpot : challenge.challengerSpot;
+    loserSpot  = submitterId === challenge.challengerId ? challenge.challengerSpot : challenge.opponentSpot;
+  } else {
+    winnerId  = submitterId;
+    const winnerEntry = getPlayerEntry(guildId, winnerId);
+    winnerSpot = winnerEntry?.spot ?? null;
+    loserId   = "unknown";
+    loserSpot = null;
   }
 
-  const logWinChannel = interaction.channel as TextChannel;
-  await finalizeChallengerWin(interaction.guild.id, challenge, interaction);
-  await postTicketMessages(interaction.client, interaction.guild.id, logWinChannel);
+  const winnerEntry = getPlayerEntry(guildId, winnerId);
+  const loserEntry  = loserId !== "unknown" ? getPlayerEntry(guildId, loserId) : null;
 
-  await logWinChannel?.send({
-    embeds: [{
-      color: GREEN,
-      description: [SEP, `  result logged  ·  ticket closing in 5s`, SEP].join("\n"),
-      footer: { text: "◈  1v1 log" }, timestamp: ts(),
-    }],
-  }).catch(() => {});
+  let loserRemoved = false;
+  if (loserEntry && winnerEntry) {
+    if (winnerEntry.spot > loserEntry.spot) {
+      swapSpots(guildId, winnerEntry.spot, loserEntry.spot);
+    }
+  } else if (!loserEntry && loserSpot) {
+    loserRemoved = true;
+  }
+
+  applyWinnerCooldown(guildId, winnerId);
+  if (loserId !== "unknown") applyCooldown(guildId, loserId);
+
+  const matchId = logMatch(guildId, {
+    winnerId,
+    loserId,
+    winnerSpot: winnerSpot ?? 0,
+    loserSpot,
+    loserRemoved,
+    autoForfeit: false,
+    challengeId: challenge?.id ?? null,
+  });
+
+  if (challenge) {
+    clearChallengeFromPlayers(guildId, challenge);
+    updateChallenge(challengeId, { status: "completed" });
+    deleteChallenge(challengeId);
+  }
+
+  const body = [
+    `**winner**  ·  <@${winnerId}>`,
+    `**loser**   ·  ${loserId !== "unknown" ? `<@${loserId}>` : "unknown"}`,
+    loserRemoved ? `**result**  ·  loser removed from board` : null,
+    `**id**      ·  \`${matchId}\``,
+  ].filter(Boolean).join("\n");
+
+  const c = cv2WithHeader(GREEN, "Match Logged — Challenger Won", body, "◈  1v1 log");
+  const payload = { components: [c], flags: MessageFlags.IsComponentsV2 };
+
+  await interaction.update(payload as Parameters<typeof interaction.update>[0]);
+  await postMatchResult(interaction.client, guildId, payload);
+  await postTicketMessages(interaction.client, guildId, interaction.channel as TextChannel);
+  await refreshLiveLeaderboard(interaction.client, guildId);
 
   setTimeout(async () => {
-    await logWinChannel?.delete().catch(() => {});
+    await (interaction.channel as TextChannel | undefined)?.delete().catch(() => {});
   }, 5000);
-
-  await refreshLiveLeaderboard(interaction.client, interaction.guild.id);
 }
 
-// ── log loss handler ──────────────────────────────────────────────────────────
 
 export async function handleLogLoss(
   interaction: ButtonInteraction,
   submitterId: string,
   challengeId: string,
 ): Promise<void> {
-  if (!interaction.guild) return;
+  const guild = interaction.guild;
+  if (!guild) return;
+
   const member = interaction.member as GuildMember | null;
-  if (!canManage1v1(member, interaction.guild.id)) {
-    await interaction.reply({ content: "you're not staff, you can't do this.", ephemeral: true });
-    return;
-  }
-
-  const challenge = challengeId !== "none" ? getChallenge(challengeId) : null;
-  if (!challenge) {
-    await interaction.reply({ content: "no challenge linked to this ticket. use `/1v1set` to update ranks manually.", ephemeral: true });
-    return;
-  }
-
-  const logLossChannel = interaction.channel as TextChannel;
-  await finalizeOpponentWin(interaction.guild.id, challenge, interaction);
-  await postTicketMessages(interaction.client, interaction.guild.id, logLossChannel);
-
-  await logLossChannel?.send({
-    embeds: [{
-      color: RED,
-      description: [SEP, `  result logged  ·  ticket closing in 5s`, SEP].join("\n"),
-      footer: { text: "◈  1v1 log" }, timestamp: ts(),
-    }],
-  }).catch(() => {});
-
-  setTimeout(async () => {
-    await logLossChannel?.delete().catch(() => {});
-  }, 5000);
-
-  await refreshLiveLeaderboard(interaction.client, interaction.guild.id);
-}
-
-// ── dispute button ────────────────────────────────────────────────────────────
-
-export async function handleLogDispute(
-  interaction: ButtonInteraction,
-  challengeId: string,
-): Promise<void> {
-  if (!interaction.guild) return;
-  const settings = getGuild(interaction.guild.id);
-
-  await interaction.reply({
-    embeds: [{
-      color: GOLD,
-      description: [
-        SEP,
-        `  **Result Disputed**`,
-        SEP,
-        `  <@${interaction.user.id}> flagged this ticket as disputed`,
-        `  staff — please review the proof and resolve manually`,
-        challengeId !== "none" ? `  challenge id  ·  \`${challengeId}\`` : "",
-        SEP,
-      ].filter(Boolean).join("\n"),
-      footer: { text: "◈  1v1 dispute" },
-      timestamp: ts(),
-    }],
-  });
-
-  const pings: string[] = [];
-  if (settings.pointsSupportRole) pings.push(`<@&${settings.pointsSupportRole}>`);
-  if (settings.pointsRole)        pings.push(`<@&${settings.pointsRole}>`);
-  if (pings.length > 0) {
-    await (interaction.channel as TextChannel)?.send({ content: pings.join(" ") }).catch(() => {});
-  }
-}
-
-// ── close ticket button ───────────────────────────────────────────────────────
-
-export async function handleLogClose(interaction: ButtonInteraction): Promise<void> {
-  if (!interaction.guild) return;
-  const member = interaction.member as GuildMember | null;
-  if (!canManage1v1(member, interaction.guild.id)) {
-    await interaction.reply({ content: "only staff can close log tickets.", ephemeral: true });
-    return;
-  }
-  await interaction.reply({ content: "closing...", ephemeral: true });
-  setTimeout(async () => {
-    await (interaction.channel as TextChannel)?.delete().catch(() => {});
-  }, 2000);
-}
-
-// ── rank logic: challenger wins ───────────────────────────────────────────────
-
-async function finalizeChallengerWin(
-  guildId: string,
-  challenge: { id: string; challengerId: string; opponentId: string; opponentSpot: number; challengerSpot: number | null },
-  interaction: ButtonInteraction,
-): Promise<void> {
-  const { challengerId, opponentId, opponentSpot, challengerSpot } = challenge;
-
-  if (challengerSpot !== null) {
-    swapSpots(guildId, challengerSpot, opponentSpot);
-    const lb = getLeaderboard(guildId);
-    if (lb[String(opponentSpot)]) {
-      lb[String(opponentSpot)]!.cooldownUntil      = Date.now() + ONE_DAY_MS;
-      lb[String(opponentSpot)]!.pendingChallengeId = null;
-    }
-    if (lb[String(challengerSpot)]) {
-      lb[String(challengerSpot)]!.cooldownUntil      = Date.now() + TWO_DAYS_MS;
-      lb[String(challengerSpot)]!.pendingChallengeId = null;
-    }
-    saveLeaderboard(guildId, lb);
-  } else {
-    const lb = getLeaderboard(guildId);
-    delete lb[String(opponentSpot)];
-    lb[String(opponentSpot)] = { userId: challengerId, spot: opponentSpot, cooldownUntil: Date.now() + ONE_DAY_MS, pendingChallengeId: null };
-    saveLeaderboard(guildId, lb);
-    applyCooldown(guildId, opponentId);
-  }
-
-  deleteChallenge(challenge.id);
-
-  const matchId = logMatch(guildId, {
-    winnerId:     challengerId,
-    loserId:      opponentId,
-    winnerSpot:   opponentSpot,
-    loserSpot:    challengerSpot,
-    loserRemoved: challengerSpot === null,
-    autoForfeit:  false,
-    challengeId:  challenge.id,
-  });
-
-  const resultEmbed = {
-    color: GREEN,
-    description: [
-      SEP,
-      `  **Challenger Won**`,
-      SEP,
-      `  winner  ·  <@${challengerId}>  now at Spot #${opponentSpot}  — 1 day cooldown`,
-      challengerSpot !== null
-        ? `  loser   ·  <@${opponentId}>  dropped to Spot #${challengerSpot}  — 2 day cooldown`
-        : `  loser   ·  <@${opponentId}>  got bumped off the board  — 2 day cooldown`,
-      `  id  ·  \`${matchId}\``,
-      SEP,
-    ].join("\n"),
-    footer: { text: "◈  1v1" },
-    timestamp: ts(),
-  };
-
-  await interaction.update({ embeds: [resultEmbed], components: [] });
-
-  await postMatchResult(interaction.client, guildId, resultEmbed);
-
-  const loser = await interaction.client.users.fetch(opponentId).catch(() => null);
-  if (loser) {
-    await loser.send({
-      embeds: [{
-        color: RED,
-        description: [
-          SEP,
-          `  you lost your 1v1 against <@${challengerId}>`,
-          challengerSpot !== null
-            ? `  dropped to Spot #${challengerSpot} — 2 day cooldown`
-            : `  bumped off the leaderboard`,
-          SEP,
-        ].join("\n"),
-        footer: { text: "◈  1v1" }, timestamp: ts(),
-      }],
-    }).catch(() => {});
-  }
-}
-
-// ── rank logic: opponent wins ─────────────────────────────────────────────────
-
-async function finalizeOpponentWin(
-  guildId: string,
-  challenge: { id: string; challengerId: string; opponentId: string; opponentSpot: number; challengerSpot: number | null },
-  interaction: ButtonInteraction,
-): Promise<void> {
-  const { challengerId, opponentId, opponentSpot, challengerSpot } = challenge;
-
-  applyWinnerCooldown(guildId, opponentId);
-  applyCooldown(guildId, challengerId);
-
-  deleteChallenge(challenge.id);
-
-  const matchId = logMatch(guildId, {
-    winnerId:     opponentId,
-    loserId:      challengerId,
-    winnerSpot:   opponentSpot,
-    loserSpot:    challengerSpot,
-    loserRemoved: false,
-    autoForfeit:  false,
-    challengeId:  challenge.id,
-  });
-
-  const resultEmbed = {
-    color: RED,
-    description: [
-      SEP,
-      `  **Defender Won**`,
-      SEP,
-      `  <@${opponentId}>  holds Spot #${opponentSpot}  — 1 day cooldown`,
-      `  <@${challengerId}>  ${challengerSpot !== null ? `back to Spot #${challengerSpot}` : "stays unranked"}  — 2 day cooldown`,
-      `  id  ·  \`${matchId}\``,
-      SEP,
-    ].join("\n"),
-    footer: { text: "◈  1v1" },
-    timestamp: ts(),
-  };
-
-  await interaction.update({ embeds: [resultEmbed], components: [] });
-
-  await postMatchResult(interaction.client, guildId, resultEmbed);
-}
-
-// ── /1v1set command ───────────────────────────────────────────────────────────
-
-export async function handle1v1Set(interaction: ChatInputCommandInteraction): Promise<void> {
-  if (!interaction.guild) return;
-  const member = interaction.member as GuildMember | null;
-  if (!canManage1v1(member, interaction.guild.id)) {
+  if (!canManage1v1(member, guild.id)) {
     await interaction.reply({ content: "you don't have permission.", ephemeral: true });
     return;
   }
 
-  const sub     = interaction.options.getSubcommand();
-  const guildId = interaction.guild.id;
+  const guildId = guild.id;
+  const challenge = challengeId !== "none" ? getChallenge(challengeId) : null;
 
-  if (sub === "add") {
-    const user = interaction.options.getUser("user", true);
+  let winnerId: string;
+  let loserId: string;
+  let winnerSpot: number | null = null;
+  let loserSpot: number | null = null;
+
+  if (challenge) {
+    loserId   = submitterId;
+    winnerId  = challenge.challengerId === submitterId ? challenge.opponentId : challenge.challengerId;
+    loserSpot = submitterId === challenge.challengerId ? challenge.challengerSpot : challenge.opponentSpot;
+    winnerSpot = submitterId === challenge.challengerId ? challenge.opponentSpot : challenge.challengerSpot;
+  } else {
+    loserId = submitterId;
+    const loserEntry = getPlayerEntry(guildId, loserId);
+    loserSpot = loserEntry?.spot ?? null;
+    winnerId = "unknown";
+    winnerSpot = null;
+  }
+
+  applyWinnerCooldown(guildId, winnerId !== "unknown" ? winnerId : submitterId);
+  applyCooldown(guildId, loserId);
+
+  const matchId = logMatch(guildId, {
+    winnerId,
+    loserId,
+    winnerSpot: winnerSpot ?? 0,
+    loserSpot,
+    loserRemoved: false,
+    autoForfeit: false,
+    challengeId: challenge?.id ?? null,
+  });
+
+  if (challenge) {
+    clearChallengeFromPlayers(guildId, challenge);
+    updateChallenge(challengeId, { status: "completed" });
+    deleteChallenge(challengeId);
+  }
+
+  const body = [
+    `**winner**  ·  ${winnerId !== "unknown" ? `<@${winnerId}>` : "opponent"}`,
+    `**loser**   ·  <@${loserId}>`,
+    `**id**      ·  \`${matchId}\``,
+  ].join("\n");
+
+  const c = cv2WithHeader(RED, "Match Logged — Opponent Won", body, "◈  1v1 log");
+  const payload = { components: [c], flags: MessageFlags.IsComponentsV2 };
+
+  await interaction.update(payload as Parameters<typeof interaction.update>[0]);
+  await postMatchResult(interaction.client, guildId, payload);
+  await postTicketMessages(interaction.client, guildId, interaction.channel as TextChannel);
+  await refreshLiveLeaderboard(interaction.client, guildId);
+
+  setTimeout(async () => {
+    await (interaction.channel as TextChannel | undefined)?.delete().catch(() => {});
+  }, 5000);
+}
+
+
+export async function handleLogClose(interaction: ButtonInteraction): Promise<void> {
+  const guild = interaction.guild;
+  if (!guild) return;
+
+  const member = interaction.member as GuildMember | null;
+  if (!canManage1v1(member, guild.id)) {
+    await interaction.reply({ content: "you don't have permission.", ephemeral: true });
+    return;
+  }
+
+  const c = cv2(DARK, "ticket closed by <@" + interaction.user.id + ">", "◈  1v1 log");
+  await interaction.update({ components: [c], flags: MessageFlags.IsComponentsV2 });
+
+  setTimeout(async () => {
+    await (interaction.channel as TextChannel | undefined)?.delete().catch(() => {});
+  }, 3000);
+}
+
+
+export async function handleLogDispute(interaction: ButtonInteraction, challengeId: string): Promise<void> {
+  const guild = interaction.guild;
+  if (!guild) return;
+
+  const body = [
+    `**disputed by**  ·  <@${interaction.user.id}>`,
+    `**challenge**    ·  \`${challengeId}\``,
+    ``,
+    `staff — review proof above and log the result manually`,
+  ].join("\n");
+
+  const c = cv2WithHeader(GOLD, "Match Disputed", body, "◈  1v1 dispute");
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+}
+
+
+export async function handle1v1Set(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (!interaction.guild) {
+    await interaction.reply({ content: "server only.", ephemeral: true });
+    return;
+  }
+
+  const guildId = interaction.guild.id;
+  const member  = interaction.member as GuildMember | null;
+  if (!canManage1v1(member, guildId)) {
+    await interaction.reply({ content: "you don't have permission.", ephemeral: true });
+    return;
+  }
+
+  const sub = interaction.options.getSubcommand();
+
+  if (sub === "set") {
     const spot = interaction.options.getInteger("spot", true);
-    const existing = getPlayerBySpot(guildId, spot);
-    if (existing) {
-      await interaction.reply({ content: `spot #${spot} is occupied by <@${existing.userId}>. remove them first.`, ephemeral: true });
-      return;
-    }
-    setPlayerAtSpot(guildId, spot, { userId: user.id, spot, cooldownUntil: null, pendingChallengeId: null });
-    await interaction.reply({
-      embeds: [{
-        color: GREEN,
-        description: `${SEP}\n  placed <@${user.id}> at Spot #${spot}\n${SEP}`,
-        footer: { text: "◈  1v1 admin" }, timestamp: ts(),
-      }],
-    });
+    const user = interaction.options.getUser("user", true);
+    setPlayerAtSpot(guildId, spot, user.id);
+    const c = cv2WithHeader(GREEN, "Spot Set", `**spot**  ·  \`#${spot}\`\n**user**  ·  <@${user.id}>`, "◈  1v1 admin");
+    await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
     await refreshLiveLeaderboard(interaction.client, guildId);
 
   } else if (sub === "remove") {
-    const user  = interaction.options.getUser("user", true);
-    const entry = getPlayerEntry(guildId, user.id);
-    if (!entry) {
-      await interaction.reply({ content: `<@${user.id}> isn't on the leaderboard.`, ephemeral: true });
-      return;
-    }
-    removeFromSpot(guildId, entry.spot);
-    await interaction.reply({
-      embeds: [{
-        color: RED,
-        description: `${SEP}\n  removed <@${user.id}> from Spot #${entry.spot}\n${SEP}`,
-        footer: { text: "◈  1v1 admin" }, timestamp: ts(),
-      }],
-    });
-    await refreshLiveLeaderboard(interaction.client, guildId);
-
-  } else if (sub === "cooldown") {
-    const user  = interaction.options.getUser("user", true);
-    const entry = getPlayerEntry(guildId, user.id);
-    if (!entry) {
-      await interaction.reply({ content: `<@${user.id}> isn't on the leaderboard.`, ephemeral: true });
-      return;
-    }
-    applyCooldown(guildId, user.id);
-    const until = new Date(Date.now() + TWO_DAYS_MS);
-    await interaction.reply({
-      embeds: [{
-        color: DARK,
-        description: `${SEP}\n  cooldown applied to <@${user.id}> until **${fmtDate(until.getTime())}**\n${SEP}`,
-        footer: { text: "◈  1v1 admin" }, timestamp: ts(),
-      }],
-    });
+    const spot = interaction.options.getInteger("spot", true);
+    removeFromSpot(guildId, spot);
+    const c = cv2WithHeader(RED, "Spot Cleared", `**spot**  ·  \`#${spot}\`  is now open`, "◈  1v1 admin");
+    await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
     await refreshLiveLeaderboard(interaction.client, guildId);
 
   } else if (sub === "clearcooldown") {
-    const user  = interaction.options.getUser("user", true);
+    const user = interaction.options.getUser("user", true);
     const entry = getPlayerEntry(guildId, user.id);
     if (!entry) {
       await interaction.reply({ content: `<@${user.id}> isn't on the leaderboard.`, ephemeral: true });
       return;
     }
     clearCooldown(guildId, user.id);
-    await interaction.reply({
-      embeds: [{
-        color: GREEN,
-        description: `${SEP}\n  cooldown cleared for <@${user.id}>\n${SEP}`,
-        footer: { text: "◈  1v1 admin" }, timestamp: ts(),
-      }],
-    });
+    const c = cv2WithHeader(GREEN, "Cooldown Cleared", `cooldown cleared for <@${user.id}>`, "◈  1v1 admin");
+    await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
     await refreshLiveLeaderboard(interaction.client, guildId);
 
   } else if (sub === "setlog") {
     const ch = interaction.options.getChannel("channel", true) as TextChannel;
     setMatchLogChannel(guildId, ch.id);
-    await interaction.reply({
-      embeds: [{
-        color: GREEN,
-        description: `${SEP}\n  match results will now be logged to <#${ch.id}>\n${SEP}`,
-        footer: { text: "◈  1v1 admin" }, timestamp: ts(),
-      }],
-      ephemeral: true,
-    });
+    const c = cv2WithHeader(GREEN, "Log Channel Set", `match results will now be logged to <#${ch.id}>`, "◈  1v1 admin");
+    await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2, ephemeral: true });
 
   } else if (sub === "pin") {
     const ch = interaction.options.getChannel("channel", true) as TextChannel;
     await interaction.deferReply({ ephemeral: true });
-    const embed = build1v1Embed(guildId);
-    const msg   = await ch.send({ embeds: [embed] });
+    const payload = build1v1Embed(guildId);
+    const msg     = await ch.send(payload as never);
     setLiveLeaderboard(guildId, ch.id, msg.id);
-    await interaction.editReply({
-      embeds: [{
-        color: GREEN,
-        description: `${SEP}\n  live leaderboard pinned to <#${ch.id}> — it will auto-update after every match\n${SEP}`,
-        footer: { text: "◈  1v1 admin" }, timestamp: ts(),
-      }],
-    });
+    const c = cv2WithHeader(GREEN, "Leaderboard Pinned", `live leaderboard pinned to <#${ch.id}> — auto-updates after every match`, "◈  1v1 admin");
+    await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
   }
 }
 
-// ── /1v1history command ───────────────────────────────────────────────────────
 
 export async function handleHistory(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) {
@@ -1054,14 +915,8 @@ export async function handleHistory(interaction: ChatInputCommandInteraction): P
   const matches = getMatchHistory(guildId, target.id, 15);
 
   if (matches.length === 0) {
-    await interaction.reply({
-      embeds: [{
-        color: DARK,
-        description: `${SEP}\n  no match history found for <@${target.id}>\n${SEP}`,
-        footer: { text: "◈  1v1 history" }, timestamp: ts(),
-      }],
-      ephemeral: true,
-    });
+    const c = cv2(DARK, `no match history found for <@${target.id}>`, "◈  1v1 history");
+    await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2, ephemeral: true });
     return;
   }
 
@@ -1079,18 +934,10 @@ export async function handleHistory(interaction: ChatInputCommandInteraction): P
     lines.push(`${icon}  **${result}**  vs <@${other}>  ${spotInfo}  ·  ${fmtDate(m.timestamp)}`);
   }
 
-  await interaction.reply({
-    embeds: [{
-      color: DARK,
-      title: `Match History — ${target.username}`,
-      description: [SEP, ...lines, SEP].join("\n"),
-      footer: { text: `◈  showing last ${matches.length} matches` },
-      timestamp: ts(),
-    }],
-  });
+  const c = cv2WithHeader(DARK, `Match History — ${target.username}`, lines.join("\n"), `◈  showing last ${matches.length} matches`);
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── /1v1stats command ─────────────────────────────────────────────────────────
 
 export async function handleStats(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) {
@@ -1104,27 +951,19 @@ export async function handleStats(interaction: ChatInputCommandInteraction): Pro
   const total   = stats.wins + stats.losses;
   const rate    = total > 0 ? Math.round((stats.wins / total) * 100) : 0;
 
-  await interaction.reply({
-    embeds: [{
-      color: BLUE,
-      title: `1v1 Stats — ${target.username}`,
-      description: [
-        SEP,
-        `  current spot  ·  ${stats.currentSpot !== null ? `**Spot #${stats.currentSpot}**` : "Unranked"}`,
-        SEP,
-        `  wins          ·  **${stats.wins}**`,
-        `  losses        ·  **${stats.losses}**`,
-        `  forfeits      ·  **${stats.forfeits}**`,
-        `  win rate      ·  **${rate}%**  (${total} total)`,
-        SEP,
-      ].join("\n"),
-      footer: { text: "◈  1v1 stats" },
-      timestamp: ts(),
-    }],
-  });
+  const body = [
+    `**current spot**  ·  ${stats.currentSpot !== null ? `Spot #${stats.currentSpot}` : "Unranked"}`,
+    ``,
+    `**wins**          ·  ${stats.wins}`,
+    `**losses**        ·  ${stats.losses}`,
+    `**forfeits**      ·  ${stats.forfeits}`,
+    `**win rate**      ·  ${rate}%  (${total} total)`,
+  ].join("\n");
+
+  const c = cv2WithHeader(BLUE, `1v1 Stats — ${target.username}`, body, "◈  1v1 stats");
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── /loground (raid logging) ──────────────────────────────────────────────────
 
 export async function handleLogRound(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) return;
@@ -1159,50 +998,32 @@ export async function handleLogRound(interaction: ChatInputCommandInteraction): 
     }
   }
 
-  let warning = "";
+  let warningBlock = "";
   if (absentRanked.length > 0) {
-    warning = "\n\n⚠️ **These players missed 2+ raids, their spot is at risk:**\n" +
-      absentRanked.map((a) => `  • <@${a.userId}> — Spot #${a.spot}`).join("\n");
+    warningBlock = "\n\n⚠️  **at risk — missed 2+ raids:**\n" +
+      absentRanked.map((a) => `  • <@${a.userId}>  Spot #${a.spot}`).join("\n");
 
     for (const a of absentRanked) {
       const user = await interaction.client.users.fetch(a.userId).catch(() => null);
       if (user) {
-        await user.send({
-          embeds: [{
-            color: RED,
-            description: [
-              SEP,
-              `  heads up, you've missed 2 raids in a row`,
-              `  your Spot #${a.spot} is at risk of being taken`,
-              `  miss another one and staff can remove your spot`,
-              SEP,
-            ].join("\n"),
-            footer: { text: "◈  1v1" }, timestamp: ts(),
-          }],
-        }).catch(() => {});
+        const dmBody = [
+          `you've missed 2 raids in a row`,
+          `**spot**  ·  \`#${a.spot}\`  is at risk`,
+          `miss another one and staff can remove your spot`,
+        ].join("\n");
+        const dmC = cv2WithHeader(RED, "⚠️  Attendance Warning", dmBody, "◈  1v1");
+        await user.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       }
     }
   }
 
-  await interaction.reply({
-    embeds: [{
-      color: GREEN,
-      description: [
-        SEP,
-        `  **Raid Logged**  ·  \`${raidId}\``,
-        SEP,
-        `  attendees  ·  ${attendeeIds.map((id) => `<@${id}>`).join(", ")}`,
-        SEP,
-      ].join("\n") + warning,
-      footer: { text: "◈  1v1 raid log" }, timestamp: ts(),
-    }],
-  });
+  const body = `**id**         ·  \`${raidId}\`\n**attendees**  ·  ${attendeeIds.map((id) => `<@${id}>`).join(", ")}${warningBlock}`;
+  const c = cv2WithHeader(GREEN, "Raid Logged", body, "◈  1v1 raid log");
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── auto-forfeit expired challenges ──────────────────────────────────────────
 
 export async function checkExpiredChallenges(client: Client): Promise<void> {
-  // ── 2h expiry warnings ──────────────────────────────────────────────────────
   const warningSoon = getPendingChallengesWarningSoon();
   for (const challenge of warningSoon) {
     try {
@@ -1211,39 +1032,22 @@ export async function checkExpiredChallenges(client: Client): Promise<void> {
 
       const challenger = await client.users.fetch(challenge.challengerId).catch(() => null);
       if (challenger) {
-        await challenger.send({
-          embeds: [{
-            color: GOLD,
-            description: [
-              SEP,
-              `  your challenge against <@${challenge.opponentId}> expires in ~${minsLeft} minutes`,
-              `  if they don't accept in time it auto-forfeits — you take the loss`,
-              SEP,
-            ].join("\n"),
-            footer: { text: "◈  1v1 expiry warning" }, timestamp: ts(),
-          }],
-        }).catch(() => {});
+        const c = cv2WithHeader(GOLD, "⏳  Challenge Expiring Soon",
+          `your challenge against <@${challenge.opponentId}> expires in ~${minsLeft} minutes\nif they don't accept in time it auto-forfeits — you take the loss`,
+          "◈  1v1 expiry warning");
+        await challenger.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       }
 
       const opponent = await client.users.fetch(challenge.opponentId).catch(() => null);
       if (opponent) {
-        await opponent.send({
-          embeds: [{
-            color: GOLD,
-            description: [
-              SEP,
-              `  pending challenge from <@${challenge.challengerId}> expires in ~${minsLeft} minutes`,
-              `  accept or decline before it runs out`,
-              SEP,
-            ].join("\n"),
-            footer: { text: "◈  1v1 expiry warning" }, timestamp: ts(),
-          }],
-        }).catch(() => {});
+        const c = cv2WithHeader(GOLD, "⏳  Challenge Expiring Soon",
+          `pending challenge from <@${challenge.challengerId}> expires in ~${minsLeft} minutes\naccept or decline before it runs out`,
+          "◈  1v1 expiry warning");
+        await opponent.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       }
     } catch { /* ignore */ }
   }
 
-  // ── auto-forfeit expired challenges ─────────────────────────────────────────
   const expired = getExpiredPendingChallenges();
 
   for (const challenge of expired) {
@@ -1266,59 +1070,37 @@ export async function checkExpiredChallenges(client: Client): Promise<void> {
         challengeId:  challenge.id,
       });
 
-      const forfeitEmbed = {
-        color: RED,
-        description: [
-          SEP,
-          `  **Auto Forfeit**`,
-          SEP,
-          `  <@${challenge.challengerId}> ran out of time`,
-          `  <@${challenge.opponentId}> keeps Spot #${challenge.opponentSpot}`,
-          `  both get a 2 day cooldown`,
-          `  id  ·  \`${matchId}\``,
-          SEP,
-        ].join("\n"),
-        footer: { text: "◈  1v1" },
-        timestamp: ts(),
-      };
+      const forfeitBody = [
+        `<@${challenge.challengerId}> ran out of time`,
+        `<@${challenge.opponentId}> keeps Spot #${challenge.opponentSpot}`,
+        `both get a 2 day cooldown`,
+        `**id**  ·  \`${matchId}\``,
+      ].join("\n");
+
+      const forfeitC = cv2WithHeader(RED, "Auto Forfeit", forfeitBody, "◈  1v1");
+      const forfeitPayload = { components: [forfeitC], flags: MessageFlags.IsComponentsV2 };
 
       const channel = guild.channels.cache.get(challenge.channelId) as TextChannel | undefined;
       if (channel) {
-        await channel.send({ embeds: [forfeitEmbed] }).catch(() => {});
+        await channel.send(forfeitPayload as never).catch(() => {});
       }
 
-      await postMatchResult(client, challenge.guildId, forfeitEmbed);
+      await postMatchResult(client, challenge.guildId, forfeitPayload);
 
       const challenger = await client.users.fetch(challenge.challengerId).catch(() => null);
       if (challenger) {
-        await challenger.send({
-          embeds: [{
-            color: RED,
-            description: [
-              SEP,
-              `  your challenge against <@${challenge.opponentId}> timed out`,
-              `  auto loss + 2 day cooldown applied to your account`,
-              SEP,
-            ].join("\n"),
-            footer: { text: "◈  1v1" }, timestamp: ts(),
-          }],
-        }).catch(() => {});
+        const c = cv2WithHeader(RED, "Challenge Timed Out",
+          `your challenge against <@${challenge.opponentId}> timed out\nauto loss + 2 day cooldown applied`,
+          "◈  1v1");
+        await challenger.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       }
 
       const opponent = await client.users.fetch(challenge.opponentId).catch(() => null);
       if (opponent) {
-        await opponent.send({
-          embeds: [{
-            color: GREEN,
-            description: [
-              SEP,
-              `  <@${challenge.challengerId}> didn't finish the match in time`,
-              `  you keep Spot #${challenge.opponentSpot} — 2 day cooldown applied to both of you`,
-              SEP,
-            ].join("\n"),
-            footer: { text: "◈  1v1" }, timestamp: ts(),
-          }],
-        }).catch(() => {});
+        const c = cv2WithHeader(GREEN, "Match Concluded",
+          `<@${challenge.challengerId}> didn't finish the match in time\nyou keep Spot #${challenge.opponentSpot} — 2 day cooldown applied to both of you`,
+          "◈  1v1");
+        await opponent.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
       }
 
       deleteChallenge(challenge.id);
@@ -1328,7 +1110,6 @@ export async function checkExpiredChallenges(client: Client): Promise<void> {
   }
 }
 
-// ── /1v1top command ───────────────────────────────────────────────────────────
 
 export async function handleTop(interaction: ChatInputCommandInteraction): Promise<void> {
   if (!interaction.guild) {
@@ -1340,13 +1121,8 @@ export async function handleTop(interaction: ChatInputCommandInteraction): Promi
   const all     = getMatchHistory(guildId, undefined, 500);
 
   if (all.length === 0) {
-    await interaction.reply({
-      embeds: [{
-        color: DARK,
-        description: `${SEP}\n  no matches logged yet\n${SEP}`,
-        footer: { text: "◈  1v1 top" }, timestamp: ts(),
-      }],
-    });
+    const c = cv2(DARK, "no matches logged yet", "◈  1v1 top");
+    await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -1374,51 +1150,35 @@ export async function handleTop(interaction: ChatInputCommandInteraction): Promi
   const lines  = sorted.map(([userId, s], idx) => {
     const total = s.wins + s.losses;
     const rate  = total > 0 ? Math.round((s.wins / total) * 100) : 0;
-    const medal = MEDALS[idx] ?? `${idx + 1}.`;
+    const medal = MEDALS[idx] ?? `\`${idx + 1}.\``;
     const lb    = getPlayerEntry(guildId, userId);
-    const spot  = lb ? ` · Spot #${lb.spot}` : "";
+    const spot  = lb ? `  ·  Spot #${lb.spot}` : "";
     return `${medal}  <@${userId}>${spot}  —  **${s.wins}W / ${s.losses}L**  (${rate}%)`;
   });
 
-  await interaction.reply({
-    embeds: [{
-      color: GOLD,
-      title: "All-Time Top Players",
-      description: [SEP, ...lines, SEP].join("\n"),
-      footer: { text: `◈  ${all.length} total matches logged` },
-      timestamp: ts(),
-    }],
-  });
+  const c = cv2WithHeader(GOLD, "All-Time Top Players", lines.join("\n"), `◈  ${all.length} total matches logged`);
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── log panel ─────────────────────────────────────────────────────────────────
 
-export async function sendLogPanel(channel: TextChannel, guildId: string): Promise<void> {
+export async function sendLogPanel(channel: TextChannel, _guildId: string): Promise<void> {
   const openBtn = new ButtonBuilder()
     .setCustomId("open_log_ticket")
     .setLabel("Open Log Ticket")
     .setStyle(ButtonStyle.Primary);
 
-  await channel.send({
-    embeds: [{
-      color: DARK,
-      description: [
-        SEP,
-        `  **Logs**`,
-        SEP,
-        `  click below to open a match log ticket`,
-        `  include screenshot proof of the result`,
-        `  staff will review and update the leaderboard`,
-        SEP,
-      ].join("\n"),
-      footer: { text: "◈  1v1 logs" },
-      timestamp: ts(),
-    }],
-    components: [new ActionRowBuilder<ButtonBuilder>().addComponents(openBtn)],
-  });
+  const body = [
+    `click below to open a match log ticket`,
+    `include screenshot proof of the result`,
+    `staff will review and update the leaderboard`,
+  ].join("\n");
+
+  const c = cv2WithHeader(DARK, "Logs", body, "◈  1v1 logs");
+  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(openBtn);
+
+  await channel.send({ components: [c, row], flags: MessageFlags.IsComponentsV2 });
 }
 
-// ── helpers ───────────────────────────────────────────────────────────────────
 
 function clearChallengeFromPlayers(
   guildId: string,

@@ -1,4 +1,5 @@
 import type { Client, TextChannel } from "discord.js";
+import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags } from "discord.js";
 import { getGuild } from "./storage.js";
 
 let _client: Client | null = null;
@@ -14,6 +15,16 @@ export interface BotLogField {
   value: string;
   inline?: boolean;
 }
+
+const LEVEL_COLOR: Record<LogLevel, number> = {
+  info:    0x6366f1,
+  warn:    0xf59e0b,
+  error:   0xef4444,
+  command: 0x3b82f6,
+  ticket:  0x8b5cf6,
+  points:  0x10b981,
+  setup:   0x64748b,
+};
 
 export async function botLog(
   guildId: string,
@@ -33,16 +44,23 @@ export async function botLog(
     const ch = guild.channels.cache.get(settings.botLogChannel) as TextChannel | undefined;
     if (!ch) return;
 
-    await ch.send({
-      embeds: [{
-        color: 0xffffff,
-        title,
-        description,
-        fields: fields ?? [],
-        footer: { text: `/curek • ${level}` },
-        timestamp: new Date().toISOString(),
-      }],
-    });
+    const color = LEVEL_COLOR[level] ?? 0x6366f1;
+    const c = new ContainerBuilder().setAccentColor(color);
+
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${title}**`));
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(description));
+
+    if (fields && fields.length > 0) {
+      c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+      const fieldLines = fields.map((f) => `**${f.name}**  ·  ${f.value}`).join("\n");
+      c.addTextDisplayComponents(new TextDisplayBuilder().setContent(fieldLines));
+    }
+
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ◈  /curek  ·  ${level}`));
+
+    await ch.send({ components: [c], flags: MessageFlags.IsComponentsV2 });
   } catch {
     // dont let logging crash anything
   }

@@ -131,7 +131,6 @@ export function isMemberFlagged(guildId: string, userId: string): boolean {
   return !!getGuildVanity(guildId).flaggedMembers[userId];
 }
 
-// ── silent vanities (flag but no ping) ────────────────────────────────────────
 
 export function getSilentVanities(guildId: string): string[] {
   return getGuildVanity(guildId).silentVanities;
@@ -156,7 +155,6 @@ export function removeSilentVanity(guildId: string, vanity: string): boolean {
   return true;
 }
 
-// ── ping role ─────────────────────────────────────────────────────────────────
 
 export function getVanityPingRole(guildId: string): string | undefined {
   return getGuildVanity(guildId).pingRoleId;

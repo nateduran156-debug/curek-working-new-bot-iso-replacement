@@ -11,14 +11,12 @@ const ALL_CONTEXTS = [InteractionContextType.Guild, InteractionContextType.BotDM
 
 const commands = [
 
-  // ── info ──────────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("help")
     .setDescription("shows all commands")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
 
-  // ── tags ──────────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("role")
     .setDescription("assign a roblox tag to a user")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -41,8 +39,7 @@ const commands = [
       o.setName("cookie").setDescription("your .ROBLOSECURITY cookie value").setRequired(true),
     ),
 
-  // ── roblox / groups ───────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("gc")
     .setDescription("run a full group check on a roblox user")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -65,8 +62,7 @@ const commands = [
     .setDescription("list all flagged groups — global and server-specific")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
 
-  // ── verification ──────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("verify")
     .setDescription("manually give a member the verified role")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -79,8 +75,7 @@ const commands = [
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
     .addUserOption((o) => o.setName("user").setDescription("member to unverify").setRequired(true)),
 
-  // ── setup ─────────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("setupticket")
     .setDescription("send the ticket panel to a channel")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -158,8 +153,7 @@ const commands = [
       o.setName("prefix").setDescription("new prefix (max 5 chars)").setRequired(true),
     ),
 
-  // ── whitelist ─────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("wl")
     .setDescription("manage bot whitelist")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -223,8 +217,7 @@ const commands = [
     .setDescription("shows all whitelisted users and roles")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
 
-  // ── points ────────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("rankup")
     .setDescription("add raid points to a member")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -284,8 +277,7 @@ const commands = [
         .addChannelTypes(ChannelType.GuildText),
     ),
 
-  // ── ranks ─────────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("addrank")
     .setDescription("add a rank tier — members auto-promote when they hit the threshold")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -308,8 +300,7 @@ const commands = [
     .setDescription("list all configured rank tiers sorted by points required")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
 
-  // ── bot settings ──────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("setstatus")
     .setDescription("set the bot's playing status — use 'clear' to remove it")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -393,8 +384,7 @@ const commands = [
       s.setName("list").setDescription("list all blacklisted users"),
     ),
 
-  // ── group ─────────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("accept")
     .setDescription("accept a roblox user's pending join request for the configured group")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -405,8 +395,7 @@ const commands = [
     .setDescription("list all pending join requests for the configured group (shows id + username)")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
 
-  // ── vanity watcher ────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("vanity")
     .setDescription("manage the discord vanity watcher for this server")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)
@@ -468,8 +457,7 @@ const commands = [
         .addRoleOption((o) => o.setName("role").setDescription("role to ping — leave blank to reset to @everyone").setRequired(false)),
     ),
 
-  // ── 1v1 system ────────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("fazee")
     .setDescription("shows the top 5 1v1 leaderboard")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
@@ -560,8 +548,7 @@ const commands = [
     .setDescription("all-time server leaderboard ranked by wins")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS),
 
-  // ── roblox tracker ────────────────────────────────────────────────────────
-  new SlashCommandBuilder()
+    new SlashCommandBuilder()
     .setName("track")
     .setDescription("track roblox players and get notified when they join a game")
     .setIntegrationTypes(ALL_TYPES).setContexts(ALL_CONTEXTS)

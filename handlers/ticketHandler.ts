@@ -3,7 +3,14 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  SectionBuilder,
+  ThumbnailBuilder,
   ModalBuilder,
+  MessageFlags,
   PermissionFlagsBits,
   StringSelectMenuBuilder,
   TextInputBuilder,
@@ -22,6 +29,7 @@ import {
   deleteTicket,
   addTicketMessage,
   memberHasTagManagerRole,
+  memberHasVerificationManagerRole,
   getWhitelist,
   getPoints,
   savePoints,
@@ -40,7 +48,6 @@ import { logTicket } from "../utils/botLogger.js";
 
 const TAG_GROUP_ID = "396910998";
 
-// Tags that should trigger a group kick when denied
 const KICK_ON_DENY_TAGS: Record<string, string> = {
   "sharingan tag": TAG_GROUP_ID,
   "rockstar": TAG_GROUP_ID,
@@ -49,21 +56,17 @@ const KICK_ON_DENY_TAGS: Record<string, string> = {
   "fraid": TAG_GROUP_ID,
 };
 
-// Kick a roblox user from the group when their tag request is denied
 async function kickDeniedUser(robloxUsername: string, tag: string): Promise<void> {
   const groupId = KICK_ON_DENY_TAGS[tag.toLowerCase()];
   if (!groupId || !robloxUsername) return;
-
   const user = await getUserByUsername(robloxUsername).catch(() => null);
   if (!user) return;
-
   await kickFromGroup(groupId, user.id).catch(() => {});
 }
 
 const WHITE = 0x6366f1;
 const GREEN = 0x34d399;
 const RED   = 0xf43f5e;
-const SEP   = "───────────────────────────────";
 
 const TAG_OPTIONS = [
   { label: "Sharingan Tag", value: "sharingan tag", description: "sharingan tag request" },
@@ -78,11 +81,8 @@ const TAG_GROUP_MSG = `### TAG GROUP —> https://www.roblox.com/communities/${T
 
 const OWNER_IDS = new Set(["1472482602215538779", "1456824205545967713", "1490246846583537787"]);
 
-function getTimestamp() {
-  return new Date().toISOString();
-}
+const now = () => new Date().toISOString();
 
-// Check if a member has permission to manage tags (approve/deny tag requests)
 function canManageTags(
   member: import("discord.js").GuildMember | null | undefined,
   guildId: string,
@@ -91,10 +91,12 @@ function canManageTags(
   if (OWNER_IDS.has(member.id)) return true;
   const wl = getWhitelist();
   if ((wl["bot"] ?? []).includes(member.id)) return true;
-  return memberHasTagManagerRole(member, guildId);
+  // tag managers AND verification managers can both approve/deny tags
+  if (memberHasTagManagerRole(member, guildId)) return true;
+  if (memberHasVerificationManagerRole(member, guildId)) return true;
+  return false;
 }
 
-// Get the discord avatar url for a user in a guild
 async function getDiscordAvatar(guild: Guild, userId: string): Promise<string | null> {
   try {
     const member =
@@ -106,7 +108,30 @@ async function getDiscordAvatar(guild: Guild, userId: string): Promise<string | 
   }
 }
 
-// Send the ticket panel to a channel
+
+function cv2(color: number, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return c;
+}
+
+function cv2WithHeader(color: number, header: string, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${header}**`));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return c;
+}
+
+
 export async function sendTicketPanel(
   channel: TextChannel,
   type: "verification" | "tag" | "both" | "1v1",
@@ -117,22 +142,13 @@ export async function sendTicketPanel(
       .setLabel("open log ticket")
       .setStyle(ButtonStyle.Primary);
 
+    const c = cv2WithHeader(WHITE, "1v1 Log Tickets",
+      "both players click the button after your match\na shared ticket opens automatically when both of you click\ndrop your proof and staff will log the result",
+      "◈  1v1 log system");
+
     await channel.send({
-      embeds: [{
-        color: WHITE,
-        description: [
-          `${SEP}`,
-          `  1v1 log tickets`,
-          `${SEP}`,
-          `  both players click the button after your match`,
-          `  a shared ticket opens automatically when both of you click`,
-          `  drop your proof and staff will log the result`,
-          `${SEP}`,
-        ].join("\n"),
-        footer: { text: "◈  1v1 log system" },
-        timestamp: getTimestamp(),
-      }],
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+      components: [c, new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+      flags: MessageFlags.IsComponentsV2,
     });
     return;
   }
@@ -142,21 +158,14 @@ export async function sendTicketPanel(
       .setCustomId("ticket_select")
       .setPlaceholder("open a ticket...")
       .addOptions([
-        {
-          label: "verification ticket",
-          description: "get verified with your roblox account",
-          value: "verification",
-        },
-        {
-          label: "tag ticket",
-          description: "request a roblox tag",
-          value: "tag",
-        },
+        { label: "verification ticket", description: "get verified with your roblox account", value: "verification" },
+        { label: "tag ticket", description: "request a roblox tag", value: "tag" },
       ]);
 
+    const c = cv2WithHeader(WHITE, "Support Tickets", "select a category below to open a ticket", "◈  x2k");
     await channel.send({
-      embeds: [{ color: WHITE, description: [`${SEP}`, `  support tickets`, `${SEP}`, `  select a category below to open a ticket`, `${SEP}`].join("\n"), footer: { text: "◈  x2k" }, timestamp: getTimestamp() }],
-      components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
+      components: [c, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(menu)],
+      flags: MessageFlags.IsComponentsV2,
     });
   } else if (type === "tag") {
     const button = new ButtonBuilder()
@@ -164,9 +173,10 @@ export async function sendTicketPanel(
       .setLabel("open tag ticket")
       .setStyle(ButtonStyle.Secondary);
 
+    const c = cv2WithHeader(WHITE, "Tag Tickets", "click the button below to open a tag ticket", "◈  tag system");
     await channel.send({
-      embeds: [{ color: WHITE, description: [`${SEP}`, `  tag tickets`, `${SEP}`, `  click the button below to open a tag ticket`, `${SEP}`].join("\n"), footer: { text: "◈  tag system" }, timestamp: getTimestamp() }],
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+      components: [c, new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+      flags: MessageFlags.IsComponentsV2,
     });
   } else {
     const button = new ButtonBuilder()
@@ -174,14 +184,15 @@ export async function sendTicketPanel(
       .setLabel("open verification ticket")
       .setStyle(ButtonStyle.Secondary);
 
+    const c = cv2WithHeader(WHITE, "Verification", "click the button below to link your roblox account and get verified", "◈  verification system");
     await channel.send({
-      embeds: [{ color: WHITE, description: [`${SEP}`, `  verification`, `${SEP}`, `  click the button below to link your roblox account and get verified`, `${SEP}`].join("\n"), footer: { text: "◈  verification system" }, timestamp: getTimestamp() }],
-      components: [new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+      components: [c, new ActionRowBuilder<ButtonBuilder>().addComponents(button)],
+      flags: MessageFlags.IsComponentsV2,
     });
   }
 }
 
-// Show the verification modal when a user clicks the button
+
 export async function showVerificationModal(interaction: Interaction): Promise<void> {
   if (!("showModal" in interaction)) return;
 
@@ -224,7 +235,7 @@ export async function showVerificationModal(interaction: Interaction): Promise<v
   await buttonInteraction.showModal(modal);
 }
 
-// Open a private verification ticket channel for the user
+
 export async function openVerificationTicket(
   interaction: Interaction,
   guild: Guild,
@@ -249,11 +260,7 @@ export async function openVerificationTicket(
     { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
     {
       id: modalInteraction.user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-      ],
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
     },
   ];
 
@@ -261,11 +268,7 @@ export async function openVerificationTicket(
     if (guild.roles.cache.has(roleId)) {
       channelPermissions.push({
         id: roleId,
-        allow: [
-          PermissionFlagsBits.ViewChannel,
-          PermissionFlagsBits.SendMessages,
-          PermissionFlagsBits.ReadMessageHistory,
-        ],
+        allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
       });
     }
   }
@@ -273,11 +276,7 @@ export async function openVerificationTicket(
   if (settings.tagManagerRole && guild.roles.cache.has(settings.tagManagerRole)) {
     channelPermissions.push({
       id: settings.tagManagerRole,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-      ],
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
     });
   }
 
@@ -292,32 +291,25 @@ export async function openVerificationTicket(
     new ButtonBuilder().setCustomId("ticket_verify").setLabel("Verify").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("ticket_accept_group").setLabel("Accept into Group").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("ticket_kick").setLabel("Kick").setStyle(ButtonStyle.Danger),
-    new ButtonBuilder()
-      .setCustomId("ticket_close")
-      .setLabel("Close Ticket")
-      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId("ticket_close").setLabel("Close Ticket").setStyle(ButtonStyle.Secondary),
   );
 
   const rolePings = vmrRoleIds.map((id) => `<@&${id}>`).join(" ");
 
+  const body = [
+    `**user**    ·  <@${modalInteraction.user.id}>`,
+    `**roblox**  ·  \`${robloxUsername}\``,
+    `**status**  ·  waiting on staff`,
+    ``,
+    `someone will get to you soon.`,
+  ].join("\n");
+
+  const c = cv2WithHeader(WHITE, "Verification Ticket", body, "◈  verification system");
+
   const message = await ticketChannel.send({
     content: `<@${modalInteraction.user.id}> ${rolePings}`,
-    embeds: [
-      {
-        color: WHITE,
-        description: [
-          SEP,
-          `  user      <@${modalInteraction.user.id}>`,
-          `  roblox    \`${robloxUsername}\``,
-          `  status    waiting on staff`,
-          SEP,
-          `  someone will get to you soon.`,
-        ].join("\n"),
-        footer: { text: "◈  verification system" },
-        timestamp: getTimestamp(),
-      },
-    ],
-    components: [buttonRow],
+    components: [c, buttonRow],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   const ticketData: TicketData = {
@@ -347,29 +339,22 @@ export async function openVerificationTicket(
 
   const blEntry = isBlacklisted(robloxUsername);
   if (blEntry) {
-    await ticketChannel.send({
-      embeds: [{
-        color: RED,
-        description: [
-          SEP,
-          `  \`${robloxUsername}\`  is blacklisted`,
-          SEP,
-          `  reason    ${blEntry.reason || "no reason given"}`,
-          `  by        <@${blEntry.addedById}>`,
-          `  date      <t:${Math.floor(blEntry.addedAt / 1000)}:D>`,
-          SEP,
-        ].join("\n"),
-        footer: { text: "◈  verification system" },
-        timestamp: getTimestamp(),
-      }],
-    }).catch(() => {});
+    const blBody = [
+      `\`${robloxUsername}\`  is blacklisted`,
+      ``,
+      `**reason**  ·  ${blEntry.reason || "no reason given"}`,
+      `**by**      ·  <@${blEntry.addedById}>`,
+      `**date**    ·  <t:${Math.floor(blEntry.addedAt / 1000)}:D>`,
+    ].join("\n");
+    const blC = cv2WithHeader(RED, "⚠️  Blacklisted User", blBody, "◈  verification system");
+    await ticketChannel.send({ components: [blC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
   await runGroupCheck(ticketChannel, robloxUsername, guild.id, modalInteraction.client);
   await modalInteraction.editReply({ content: `ticket opened: <#${ticketChannel.id}>` });
 }
 
-// Open a private tag ticket channel for the user
+
 export async function openTagChannel(interaction: Interaction) {
   const tagInteraction = interaction as
     | import("discord.js").ButtonInteraction
@@ -403,22 +388,14 @@ export async function openTagChannel(interaction: Interaction) {
     { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
     {
       id: tagInteraction.user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-      ],
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
     },
   ];
 
   if (settings.tagManagerRole && guild.roles.cache.has(settings.tagManagerRole)) {
     channelPermissions.push({
       id: settings.tagManagerRole,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-      ],
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
     });
   }
 
@@ -434,17 +411,11 @@ export async function openTagChannel(interaction: Interaction) {
     .setPlaceholder("pick a tag...")
     .addOptions(TAG_OPTIONS);
 
+  const c = cv2WithHeader(WHITE, "Tag Ticket", "pick a tag from the dropdown below", "◈  tag system");
   await ticketChannel.send({
     content: `<@${tagInteraction.user.id}> <@&1494364609140752554>`,
-    embeds: [
-      {
-        color: WHITE,
-        description: [`${SEP}`, `  pick a tag from the dropdown below`, `${SEP}`].join("\n"),
-        footer: { text: "◈  tag system" },
-        timestamp: getTimestamp(),
-      },
-    ],
-    components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(tagMenu)],
+    components: [c, new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(tagMenu)],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   const ticketData: TicketData = {
@@ -476,7 +447,7 @@ export async function openTagChannel(interaction: Interaction) {
   });
 }
 
-// Show a modal asking for the user's roblox username after they pick a tag
+
 export async function handleInChannelTagSelect(
   interaction: import("discord.js").StringSelectMenuInteraction,
 ) {
@@ -500,7 +471,7 @@ export async function handleInChannelTagSelect(
   await interaction.showModal(modal);
 }
 
-// Post the tag review embed in the ticket channel after the user submits the form
+
 export async function postTagReviewEmbed(
   interaction: import("discord.js").ModalSubmitInteraction,
   tag: string,
@@ -527,37 +498,23 @@ export async function postTagReviewEmbed(
   await interaction.deferReply();
 
   const reviewButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("ticket_tag_approve")
-      .setLabel("Approve")
-      .setStyle(ButtonStyle.Success),
-    new ButtonBuilder()
-      .setCustomId("ticket_tag_deny")
-      .setLabel("Deny")
-      .setStyle(ButtonStyle.Danger),
+    new ButtonBuilder().setCustomId("ticket_tag_approve").setLabel("Approve").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("ticket_tag_deny").setLabel("Deny").setStyle(ButtonStyle.Danger),
   );
 
+  const body = [
+    `**user**    ·  <@${interaction.user.id}>`,
+    `**roblox**  ·  \`${robloxUsername}\``,
+    `**tag**     ·  \`${tag}\``,
+  ].join("\n");
+
+  const c = cv2WithHeader(WHITE, "Pending Review", body, "◈  tag system");
+
   await interaction.editReply({
-    embeds: [
-      {
-        color: WHITE,
-        description: [
-          SEP,
-          `  pending review`,
-          SEP,
-          `  user    <@${interaction.user.id}>`,
-          `  roblox  \`${robloxUsername}\``,
-          `  tag     \`${tag}\``,
-          SEP,
-        ].join("\n"),
-        footer: { text: "◈  tag system" },
-        timestamp: getTimestamp(),
-      },
-    ],
-    components: [reviewButtons],
+    components: [c, reviewButtons],
+    flags: MessageFlags.IsComponentsV2,
   });
 
-  // Send the tag group link if the tag isn't "member"
   if (tag.toLowerCase() !== "member") {
     const ticketChannel = interaction.channel as TextChannel | null;
     await ticketChannel?.send({ content: TAG_GROUP_MSG }).catch(() => {});
@@ -574,7 +531,7 @@ export async function postTagReviewEmbed(
   );
 }
 
-// Handle the approve button click on a tag request
+
 export async function handleTagApprove(
   interaction: import("discord.js").ButtonInteraction,
 ): Promise<void> {
@@ -588,10 +545,7 @@ export async function handleTagApprove(
 
   const member = interaction.member as import("discord.js").GuildMember | null;
   if (!canManageTags(member, interaction.guild!.id)) {
-    await interaction.reply({
-      content: "you don't have permission to approve tag requests.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "you don't have permission to approve tag requests.", ephemeral: true });
     return;
   }
 
@@ -604,37 +558,21 @@ export async function handleTagApprove(
 
   if (!result.ok) {
     const retryButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder()
-        .setCustomId("ticket_tag_approve")
-        .setLabel("Retry Approve")
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId("ticket_tag_deny")
-        .setLabel("Deny")
-        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId("ticket_tag_approve").setLabel("Retry Approve").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("ticket_tag_deny").setLabel("Deny").setStyle(ButtonStyle.Danger),
     );
 
-    await interaction.editReply({
-      embeds: [
-        {
-          color: RED,
-          description: [
-            SEP,
-            `  roblox-side error`,
-            SEP,
-            `  user    <@${ticket.userId}>`,
-            `  roblox  \`${robloxUsername}\``,
-            `  tag     \`${tag}\``,
-            `  error   ${result.reason}`,
-            SEP,
-            `  check the tag group and try again, or deny the request`,
-          ].join("\n"),
-          footer: { text: "◈  tag system" },
-          timestamp: getTimestamp(),
-        },
-      ],
-      components: [retryButtons],
-    });
+    const body = [
+      `**user**    ·  <@${ticket.userId}>`,
+      `**roblox**  ·  \`${robloxUsername}\``,
+      `**tag**     ·  \`${tag}\``,
+      `**error**   ·  ${result.reason}`,
+      ``,
+      `check the tag group and try again, or deny the request`,
+    ].join("\n");
+
+    const c = cv2WithHeader(RED, "Roblox-Side Error", body, "◈  tag system");
+    await interaction.editReply({ components: [c, retryButtons], flags: MessageFlags.IsComponentsV2 });
     return;
   }
 
@@ -646,26 +584,15 @@ export async function handleTagApprove(
   ticket.approvedById = interaction.user.id;
   setTicket(ticket.channelId, ticket);
 
-  await interaction.editReply({
-    embeds: [
-      {
-        color: GREEN,
-        description: [
-          SEP,
-          `  approved`,
-          SEP,
-          `  user    <@${ticket.userId}>`,
-          `  roblox  \`${robloxUsername}\``,
-          `  tag     \`${tag}\``,
-          `  by      <@${interaction.user.id}>`,
-          SEP,
-        ].join("\n"),
-        footer: { text: "◈  tag system" },
-        timestamp: getTimestamp(),
-      },
-    ],
-    components: [],
-  });
+  const body = [
+    `**user**    ·  <@${ticket.userId}>`,
+    `**roblox**  ·  \`${robloxUsername}\``,
+    `**tag**     ·  \`${tag}\``,
+    `**by**      ·  <@${interaction.user.id}>`,
+  ].join("\n");
+
+  const c = cv2WithHeader(GREEN, "Approved", body, "◈  tag system");
+  await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
   await logTicket(
     interaction.guild!.id,
@@ -679,22 +606,15 @@ export async function handleTagApprove(
 
   const approvedUser = await interaction.client.users.fetch(ticket.userId).catch(() => null);
   if (approvedUser) {
-    await approvedUser.send({
-      embeds: [{
-        color: GREEN,
-        description: [
-          SEP,
-          `  tag approved  ·  \`${tag}\``,
-          SEP,
-          `  roblox    \`${robloxUsername}\``,
-          `  by        <@${interaction.user.id}>`,
-          SEP,
-          `  you've been ranked in the group, go check your roles.`,
-        ].join("\n"),
-        footer: { text: "◈  tag system" },
-        timestamp: getTimestamp(),
-      }],
-    }).catch(() => {});
+    const dmBody = [
+      `**tag**     ·  \`${tag}\``,
+      `**roblox**  ·  \`${robloxUsername}\``,
+      `**by**      ·  <@${interaction.user.id}>`,
+      ``,
+      `you've been ranked in the group, go check your roles.`,
+    ].join("\n");
+    const dmC = cv2WithHeader(GREEN, "Tag Approved", dmBody, "◈  tag system");
+    await approvedUser.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
   setTimeout(async () => {
@@ -706,7 +626,7 @@ export async function handleTagApprove(
   }, 5000);
 }
 
-// Handle the deny button click on a tag request
+
 export async function handleTagDeny(
   interaction: import("discord.js").ButtonInteraction,
 ): Promise<void> {
@@ -720,12 +640,12 @@ export async function handleTagDeny(
 
   const member = interaction.member as import("discord.js").GuildMember | null;
   if (!canManageTags(member, interaction.guild!.id)) {
-    await interaction.reply({
-      content: "you don't have permission to deny tag requests.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "you don't have permission to deny tag requests.", ephemeral: true });
     return;
   }
+
+  const tag = ticket.requestedTag ?? "no tag";
+  const robloxUsername = ticket.robloxUsername ?? "";
 
   ticket.status = "denied";
   ticket.closedAt = Date.now();
@@ -733,56 +653,39 @@ export async function handleTagDeny(
   ticket.closedById = interaction.user.id;
   setTicket(ticket.channelId, ticket);
 
-  await interaction.reply({
-    embeds: [
-      {
-        color: RED,
-        description: [
-          SEP,
-          `  denied`,
-          SEP,
-          `  user    <@${ticket.userId}>`,
-          `  roblox  \`${ticket.robloxUsername ?? "unknown"}\``,
-          `  tag     \`${ticket.requestedTag ?? "unknown"}\``,
-          `  by      <@${interaction.user.id}>`,
-          SEP,
-        ].join("\n"),
-        footer: { text: "◈  tag system" },
-        timestamp: getTimestamp(),
-      },
-    ],
-    components: [],
-  });
+  const body = [
+    `**user**    ·  <@${ticket.userId}>`,
+    `**roblox**  ·  \`${robloxUsername}\``,
+    `**tag**     ·  \`${tag}\``,
+    `**by**      ·  <@${interaction.user.id}>`,
+  ].join("\n");
+
+  const c = cv2WithHeader(RED, "Denied", body, "◈  tag system");
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
   await logTicket(
     interaction.guild!.id,
     "Tag Denied",
     `<@${interaction.user.id}> denied the tag request for <@${ticket.userId}>`,
     [
-      { name: "Roblox", value: ticket.robloxUsername ?? "unknown", inline: true },
-      { name: "Tag", value: ticket.requestedTag ?? "unknown", inline: true },
+      { name: "Roblox", value: robloxUsername, inline: true },
+      { name: "Tag", value: tag, inline: true },
     ],
   );
 
+  await kickDeniedUser(robloxUsername, tag);
+
   const deniedUser = await interaction.client.users.fetch(ticket.userId).catch(() => null);
   if (deniedUser) {
-    await deniedUser.send({
-      embeds: [{
-        color: RED,
-        description: [
-          SEP,
-          `  tag request denied`,
-          SEP,
-          `  roblox  \`${ticket.robloxUsername ?? "unknown"}\``,
-          `  tag     \`${ticket.requestedTag ?? "unknown"}\``,
-          `  by      <@${interaction.user.id}>`,
-          SEP,
-          `  nothing was changed on your account. open a new ticket if you have questions.`,
-        ].join("\n"),
-        footer: { text: "◈  tag system" },
-        timestamp: getTimestamp(),
-      }],
-    }).catch(() => {});
+    const dmBody = [
+      `**tag**     ·  \`${tag}\``,
+      `**roblox**  ·  \`${robloxUsername}\``,
+      `**by**      ·  <@${interaction.user.id}>`,
+      ``,
+      `if you think this was a mistake, open a new ticket.`,
+    ].join("\n");
+    const dmC = cv2WithHeader(RED, "Tag Denied", dmBody, "◈  tag system");
+    await deniedUser.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
   }
 
   setTimeout(async () => {
@@ -791,229 +694,98 @@ export async function handleTagDeny(
     deleteTicket(ticket.channelId);
     const channel = interaction.guild?.channels.cache.get(ticket.channelId);
     await (channel as TextChannel)?.delete().catch(() => {});
-  }, 4000);
+  }, 5000);
 }
 
-// Close a ticket and delete the channel
+
 export async function closeTicket(
   interaction: import("discord.js").ButtonInteraction,
   ticket: TicketData,
   reason: string | null,
-) {
-  await postCloseLog(interaction.client, interaction.guild!, ticket);
-  deleteTicket(ticket.channelId);
-  const channel = interaction.guild?.channels.cache.get(ticket.channelId);
-  await (channel as TextChannel)?.delete().catch(() => {});
-}
+): Promise<void> {
+  const guild = interaction.guild!;
 
-// Close a ticket using a text message command
-export async function closeTicketByMessage(message: import("discord.js").Message): Promise<void> {
-  const allTickets = getTickets();
-  const ticket = allTickets[message.channelId];
-
-  if (!ticket) {
-    await message.reply("this channel isn't an active ticket.");
-    return;
-  }
-
-  ticket.status = ticket.status === "open" ? "closed" : ticket.status;
+  ticket.status = "closed";
   ticket.closedAt = Date.now();
-  ticket.closedBy = message.author.username;
-  ticket.closedById = message.author.id;
+  ticket.closedBy = interaction.user.username;
+  ticket.closedById = interaction.user.id;
   setTicket(ticket.channelId, ticket);
 
-  await message.reply("closing ticket...");
-  await postCloseLog(message.client, message.guild!, ticket);
-  deleteTicket(ticket.channelId);
+  const body = reason
+    ? `ticket closed by <@${interaction.user.id}>\n**reason**  ·  ${reason}`
+    : `ticket closed by <@${interaction.user.id}>`;
+  const c = cv2(0x4f46e5, body, "◈  ticket system");
+  await interaction.editReply({ components: [c], flags: MessageFlags.IsComponentsV2 });
+
+  await postCloseLog(interaction.client, guild, ticket);
 
   setTimeout(async () => {
-    const channel = message.guild?.channels.cache.get(ticket.channelId);
-    await (channel as TextChannel)?.delete().catch(() => {});
-  }, 2000);
-}
-
-// Handle tag manager typing approve/deny in the ticket channel
-export async function handleTagManagerMessage(message: Message) {
-  if (!message.guild) return;
-
-  const guildId = message.guild.id;
-  const allTickets = getTickets();
-  const ticket = allTickets[message.channelId];
-
-  if (!ticket || ticket.type !== "tag" || ticket.status !== "open") return;
-
-  const isTagManager = message.member ? (canManageTags(message.member, guildId)) : false;
-
-  if (!isTagManager) return;
-
-  const approveWords = ["approved", "yes", "approve"];
-  const denyWords = ["no", "deny", "denied"];
-  const messageText = message.content.toLowerCase().trim();
-  const isApprove = approveWords.includes(messageText);
-  const isDeny = denyWords.includes(messageText);
-
-  if (!isApprove && !isDeny) return;
-
-  const tag = ticket.requestedTag ?? "no tag";
-  const robloxUsername = ticket.robloxUsername ?? "";
-
-  addTicketMessage(message.channelId, {
-    author: message.author.username,
-    authorId: message.author.id,
-    content: message.content,
-    timestamp: Date.now(),
-  });
-
-  if (isApprove) {
-    ticket.status = "approved";
-    ticket.closedAt = Date.now();
-    ticket.closedBy = message.author.username;
-    ticket.closedById = message.author.id;
-    ticket.approvedBy = message.author.username;
-    ticket.approvedById = message.author.id;
-
-    let robloxNote = "";
-    if (robloxUsername && tag !== "no tag") {
-      const result = await giveRobloxTagRole(robloxUsername, tag);
-      if (result.ok) {
-        robloxNote = `roblox role **${tag}** given to \`${robloxUsername}\``;
-      } else {
-        robloxNote = `roblox role failed: ${result.reason}`;
-      }
-    }
-
-    const descriptionLines = [`tag \`${tag}\` approved for **${robloxUsername}** by <@${message.author.id}>.`];
-    if (robloxNote) descriptionLines.push(robloxNote);
-
-    await (message.channel as TextChannel).send({
-      embeds: [
-        {
-          color: WHITE,
-          description: descriptionLines.join("\n"),
-          timestamp: getTimestamp(),
-        },
-      ],
-    });
-
-    setTicket(ticket.channelId, ticket);
-
-    await logTicket(guildId, "Tag Approved (Text)", `<@${message.author.id}> approved tag \`${tag}\` by typing`, [
-      { name: "Roblox", value: robloxUsername, inline: true },
-    ]);
-
-    await sendTagLog(message.client, message.guild!, ticket);
-  } else {
-    ticket.status = "denied";
-    ticket.closedAt = Date.now();
-    ticket.closedBy = message.author.username;
-    ticket.closedById = message.author.id;
-    setTicket(ticket.channelId, ticket);
-
-    await kickDeniedUser(ticket.robloxUsername ?? "", ticket.requestedTag ?? "");
-
-    await (message.channel as TextChannel).send({
-      embeds: [
-        {
-          color: WHITE,
-          description: `tag request denied by <@${message.author.id}>.`,
-          timestamp: getTimestamp(),
-        },
-      ],
-    });
-
-    await logTicket(guildId, "Tag Denied (Text)", `<@${message.author.id}> denied a tag request by typing`);
-    await sendTagLog(message.client, message.guild!, ticket);
-  }
-
-  setTimeout(async () => {
-    await postCloseLog(message.client, message.guild!, ticket);
     deleteTicket(ticket.channelId);
-    const channel = message.guild?.channels.cache.get(ticket.channelId);
+    const channel = guild.channels.cache.get(ticket.channelId);
     await (channel as TextChannel)?.delete().catch(() => {});
-  }, 3000);
+  }, 5000);
 }
 
-// Run a group check on a roblox user when a verification ticket is opened
+
 async function runGroupCheck(
   channel: TextChannel,
   robloxUsername: string,
   guildId: string,
-  client: Client,
-) {
-  const settings = getGuild(guildId);
-  const flaggedGroups = settings.flaggedGroups ?? [];
-  const requiredGroupId = settings.groupId ?? "703716156";
+  client: import("discord.js").Client,
+): Promise<void> {
+  try {
+    const settings = getGuild(guildId);
+    const user = await getUserByUsername(robloxUsername).catch(() => null);
+    if (!user) return;
 
-  const user = await getUserByUsername(robloxUsername).catch(() => null);
-  if (!user) {
-    await channel.send({
-      embeds: [
-        {
-          color: RED,
-          description: `couldn't find **${robloxUsername}** on roblox.`,
-          timestamp: getTimestamp(),
-        },
-      ],
-    });
-    return;
-  }
+    const groups = await getUserGroups(user.id).catch(() => [] as import("../utils/roblox.js").RobloxGroup[]);
+    const mainGroupId = settings.groupId ?? "703716156";
+    const inGroup = await isInGroup(user.id, mainGroupId).catch(() => false);
 
-  const userGroups = await getUserGroups(user.id).catch(() => []) as Array<{ group: { id: number; name: string } }>;
-  const isInMainGroup = await isInGroup(user.id, requiredGroupId).catch(() => false);
-  const flaggedHits = userGroups.filter((entry) => flaggedGroups.includes(String(entry.group.id)));
+    const guildFlaggedIds = settings.flaggedGroups ?? [];
+    const ALWAYS_FLAGGED_IDS = new Set([
+      "650907997","16848719","214730861","33861944","495825805",
+      "862795072","32564331","265955381","15957207","1024109775",
+      "872867055","34546804","489845165","91960354","580313332",
+      "339952823","575770529","140364569",
+    ]);
 
-  const allClear = isInMainGroup && flaggedHits.length === 0;
-  const statusColor = allClear ? GREEN : RED;
+    const flaggedHits = groups.filter((g: import("../utils/roblox.js").RobloxGroup) =>
+      guildFlaggedIds.includes(String(g.group.id)) || ALWAYS_FLAGGED_IDS.has(String(g.group.id)),
+    );
 
-  const groupListLines =
-    userGroups.length > 0
-      ? userGroups.map((entry) => `• [${entry.group.name}](https://www.roblox.com/groups/${entry.group.id})`)
-      : ["• none"];
+    const embeds: object[] = [];
 
-  const groupListText = groupListLines.join("\n");
+    const groupList = groups.length > 0
+      ? groups.map((g: import("../utils/roblox.js").RobloxGroup) => `• [${g.group.name}](https://www.roblox.com/groups/${g.group.id})`).join("\n")
+      : "• none";
 
-  const groupLink = `https://www.roblox.com/communities/${requiredGroupId}`;
-  const mainGroupLine = isInMainGroup
-    ? `  main group  ·  in`
-    : `  main group  ·  not in  ·  [join here](${groupLink})`;
+    const profileUrl = `https://www.roblox.com/users/${user.id}/profile`;
+    const mainBody = `**[${user.name}](${profileUrl})**\n\n**Groups**\n${groupList}`;
+    const color = flaggedHits.length > 0 ? 0xf43f5e : inGroup ? 0x34d399 : 0x6366f1;
+    embeds.push(cv2(color, mainBody, "◈  group check"));
 
-  const embeds: object[] = [
-    {
-      color: statusColor,
-      description: [
-        SEP,
-        `  **${user.name}**`,
-        SEP,
-        mainGroupLine,
-        flaggedHits.length > 0
-          ? `  flagged groups  ·  ${flaggedHits.length} hit${flaggedHits.length !== 1 ? "s" : ""}`
-          : `  flagged groups  ·  none`,
-        SEP,
-        ...groupListLines.map(l => `  ${l}`),
-        SEP,
-      ].join("\n"),
-      footer: { text: "◈  verification system" },
-      timestamp: getTimestamp(),
-    },
-  ];
+    if (flaggedHits.length > 0) {
+      const flaggedLines = flaggedHits
+        .map((entry: import("../utils/roblox.js").RobloxGroup) => `• [${entry.group.name}](https://www.roblox.com/groups/${entry.group.id})`)
+        .join("\n");
+      embeds.push(cv2WithHeader(0xf43f5e, "⚠️  Flagged Groups",
+        `flagged groups — ask them to leave before verifying\n\n${flaggedLines}`,
+        "◈  verification system"));
+    }
 
-  if (flaggedHits.length > 0) {
-    const flaggedLines = flaggedHits
-      .map((entry) => `  • [${entry.group.name}](https://www.roblox.com/groups/${entry.group.id})`)
-      .join("\n");
+    const groupBody = inGroup
+      ? `✓ **[${user.name}](${profileUrl})** is in the group and good to verify\n\n**group id**  ·  \`${mainGroupId}\`\n**link**      ·  [Join Here](https://www.roblox.com/communities/${mainGroupId})`
+      : `✗ **[${user.name}](${profileUrl})** is not in the group\n\n**group id**  ·  \`${mainGroupId}\`\n**link**      ·  [Join Here](https://www.roblox.com/communities/${mainGroupId})`;
+    embeds.push(cv2(color, groupBody));
 
-    embeds.push({
-      color: RED,
-      description: [SEP, `  flagged groups  ·  ask them to leave before verifying`, SEP, flaggedLines, SEP].join("\n"),
-      footer: { text: "◈  verification system" },
-      timestamp: getTimestamp(),
-    });
-  }
-
-  await channel.send({ embeds });
+    for (const e of embeds) {
+      await channel.send({ components: [e as never], flags: MessageFlags.IsComponentsV2 });
+    }
+  } catch { /* ignore */ }
 }
 
-// Send a tag approval/denial log to the tag log channel
+
 async function sendTagLog(client: Client, guild: Guild, ticket: TicketData) {
   const settings = getGuild(guild.id);
   const logChannelId = settings.tagLogChannel ?? settings.logChannel;
@@ -1025,43 +797,40 @@ async function sendTagLog(client: Client, guild: Guild, ticket: TicketData) {
   const avatarUrl = await getDiscordAvatar(guild, ticket.userId);
   const transcript = generateTranscript(ticket);
 
-  const embedTitle = ticket.status === "approved" ? "Tag Approved" : "Tag Denied";
-
-  const descriptionLines = [
-    `**User:** <@${ticket.userId}>`,
-    `**User ID:** \`${ticket.userId}\``,
-    `**Roblox:** \`${ticket.robloxUsername ?? "unknown"}\``,
-    `**Tag:** \`${ticket.requestedTag ?? "?"}\``,
+  const isApproved = ticket.status === "approved";
+  const descLines = [
+    `**User**  ·  <@${ticket.userId}>  (\`${ticket.userId}\`)`,
+    `**Roblox**  ·  \`${ticket.robloxUsername ?? "unknown"}\``,
+    `**Tag**  ·  \`${ticket.requestedTag ?? "?"}\``,
+    ...(ticket.approvedBy ? [`**Approved By**  ·  ${ticket.approvedBy}`] : []),
+    ...(ticket.closedBy && ticket.status === "denied" ? [`**Denied By**  ·  ${ticket.closedBy}`] : []),
   ];
 
-  if (ticket.approvedBy) {
-    descriptionLines.push(`**Approved By:** ${ticket.approvedBy}`);
-  }
-  if (ticket.closedBy && ticket.status === "denied") {
-    descriptionLines.push(`**Denied By:** ${ticket.closedBy}`);
-  }
-
-  const embed: Record<string, unknown> = {
-    color: ticket.status === "approved" ? GREEN : RED,
-    title: embedTitle,
-    description: descriptionLines.join("\n"),
-    footer: { text: "tag system" },
-    timestamp: getTimestamp(),
-  };
-
+  const c = new ContainerBuilder().setAccentColor(isApproved ? 0x34d399 : 0xf43f5e);
   if (avatarUrl) {
-    embed["thumbnail"] = { url: avatarUrl };
+    const section = new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${isApproved ? "Tag Approved" : "Tag Denied"}**`))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
+    c.addSectionComponents(section);
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  } else {
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${isApproved ? "Tag Approved" : "Tag Denied"}**`));
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
   }
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(descLines.join("\n")));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ◈  tag system`));
 
   await logChannel
     .send({
-      embeds: [embed],
+      components: [c],
+      flags: MessageFlags.IsComponentsV2,
       files: [{ attachment: transcript, name: `tag-transcript-${ticket.channelId}.html` }],
     })
     .catch(() => {});
 }
 
-// Show the raid point request modal
+
 export async function showRaidPointModal(interaction: Interaction): Promise<void> {
   if (!("showModal" in interaction)) return;
 
@@ -1093,7 +862,7 @@ export async function showRaidPointModal(interaction: Interaction): Promise<void
   await buttonInteraction.showModal(modal);
 }
 
-// Open a private raid point review channel
+
 export async function openRaidPointTicket(
   interaction: import("discord.js").ModalSubmitInteraction,
   guild: Guild,
@@ -1123,33 +892,21 @@ export async function openRaidPointTicket(
     { id: guild.id, deny: [PermissionFlagsBits.ViewChannel] },
     {
       id: interaction.user.id,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-      ],
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
     },
   ];
 
   if (settings.pointsSupportRole && guild.roles.cache.has(settings.pointsSupportRole)) {
     channelPermissions.push({
       id: settings.pointsSupportRole,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-      ],
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
     });
   }
 
   if (settings.pointsRole && guild.roles.cache.has(settings.pointsRole)) {
     channelPermissions.push({
       id: settings.pointsRole,
-      allow: [
-        PermissionFlagsBits.ViewChannel,
-        PermissionFlagsBits.SendMessages,
-        PermissionFlagsBits.ReadMessageHistory,
-      ],
+      allow: [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.ReadMessageHistory],
     });
   }
 
@@ -1159,38 +916,26 @@ export async function openRaidPointTicket(
     permissionOverwrites: channelPermissions,
   })) as TextChannel;
 
-  const approveButton = new ButtonBuilder()
-    .setCustomId("raid_approve")
-    .setLabel("Approve")
-    .setStyle(ButtonStyle.Success);
-
-  const denyButton = new ButtonBuilder()
-    .setCustomId("raid_deny")
-    .setLabel("Deny")
-    .setStyle(ButtonStyle.Danger);
-
-  const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(approveButton, denyButton);
+  const buttonRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId("raid_approve").setLabel("Approve").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId("raid_deny").setLabel("Deny").setStyle(ButtonStyle.Danger),
+  );
 
   const pingParts: string[] = [`<@${interaction.user.id}>`];
   if (settings.pointsSupportRole) pingParts.push(`<@&${settings.pointsSupportRole}>`);
   if (settings.pointsRole) pingParts.push(`<@&${settings.pointsRole}>`);
 
+  const body = [
+    `**submitted by**  ·  <@${interaction.user.id}> (${interaction.user.username})`,
+    `**roblox**        ·  \`${robloxUsername}\``,
+    `**proof**         ·  ${proofUrl}`,
+  ].join("\n");
+
+  const c = cv2WithHeader(WHITE, "Raid Point Request", body, "◈  points system");
   await ticketChannel.send({
     content: pingParts.join(" "),
-    embeds: [
-      {
-        color: WHITE,
-        title: "Raid Point Request",
-        description: [
-          `**Submitted By:** <@${interaction.user.id}> (${interaction.user.username})`,
-          `**Roblox Username:** \`${robloxUsername}\``,
-          `**Proof:** ${proofUrl}`,
-        ].join("\n"),
-        footer: { text: "tag system" },
-        timestamp: getTimestamp(),
-      },
-    ],
-    components: [buttonRow],
+    components: [c, buttonRow],
+    flags: MessageFlags.IsComponentsV2,
   });
 
   const ticketData: TicketData = {
@@ -1217,7 +962,7 @@ export async function openRaidPointTicket(
   await interaction.editReply({ content: `your request has been submitted: <#${ticketChannel.id}>` });
 }
 
-// Handle the approve button on a raid point request
+
 export async function handleRaidApprove(
   interaction: import("discord.js").ButtonInteraction,
 ): Promise<void> {
@@ -1240,10 +985,7 @@ export async function handleRaidApprove(
   const hasPR = !!settings.pointsRole && !!member?.roles.cache.has(settings.pointsRole);
 
   if (!isOwner && !isWlBot && !hasPSR && !hasPR) {
-    await interaction.reply({
-      content: "you're not staff, you can't do that.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "you're not staff, you can't do that.", ephemeral: true });
     return;
   }
 
@@ -1260,19 +1002,14 @@ export async function handleRaidApprove(
   const newTotal = points[ticket.userId] ?? 0;
   const pointLabel = newTotal !== 1 ? "pts" : "pt";
 
-  await interaction.reply({
-    embeds: [
-      {
-        color: WHITE,
-        description: [
-          `raid point approved for <@${ticket.userId}>.`,
-          `current total: **${newTotal}** ${pointLabel}`,
-          `approved by <@${interaction.user.id}>`,
-        ].join("\n"),
-        timestamp: getTimestamp(),
-      },
-    ],
-  });
+  const body = [
+    `raid point approved for <@${ticket.userId}>`,
+    `**total**  ·  **${newTotal}** ${pointLabel}`,
+    `**by**     ·  <@${interaction.user.id}>`,
+  ].join("\n");
+
+  const c = cv2WithHeader(WHITE, "Approved", body, "◈  points system");
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
   refreshLeaderboard(interaction.client, guildId).catch(() => {});
 
@@ -1283,7 +1020,7 @@ export async function handleRaidApprove(
   }, 4000);
 }
 
-// Handle the deny button on a raid point request
+
 export async function handleRaidDeny(
   interaction: import("discord.js").ButtonInteraction,
 ): Promise<void> {
@@ -1306,10 +1043,7 @@ export async function handleRaidDeny(
   const hasPR = !!settings.pointsRole && !!member?.roles.cache.has(settings.pointsRole);
 
   if (!isOwner && !isWlBotDeny && !hasPSR && !hasPR) {
-    await interaction.reply({
-      content: "you're not staff, you can't do that.",
-      ephemeral: true,
-    });
+    await interaction.reply({ content: "you're not staff, you can't do that.", ephemeral: true });
     return;
   }
 
@@ -1319,15 +1053,10 @@ export async function handleRaidDeny(
   ticket.closedById = interaction.user.id;
   setTicket(ticket.channelId, ticket);
 
-  await interaction.reply({
-    embeds: [
-      {
-        color: WHITE,
-        description: `raid point request denied by <@${interaction.user.id}>.`,
-        timestamp: getTimestamp(),
-      },
-    ],
-  });
+  const c = cv2WithHeader(WHITE, "Denied",
+    `raid point request denied by <@${interaction.user.id}>`,
+    "◈  points system");
+  await interaction.reply({ components: [c], flags: MessageFlags.IsComponentsV2 });
 
   setTimeout(async () => {
     deleteTicket(ticket.channelId);
@@ -1336,7 +1065,7 @@ export async function handleRaidDeny(
   }, 4000);
 }
 
-// Auto-close tickets that have been idle for 24 hours
+
 export async function autoCloseIdleTickets(client: Client): Promise<void> {
   const allTickets = getTickets();
   const IDLE_MS = 24 * 60 * 60 * 1000;
@@ -1359,31 +1088,19 @@ export async function autoCloseIdleTickets(client: Client): Promise<void> {
 
     const ticketUser = await client.users.fetch(ticket.userId).catch(() => null);
     if (ticketUser) {
-      await ticketUser.send({
-        embeds: [{
-          color: 0x4f46e5,
-          title: "ticket auto-closed",
-          description: [
-            `Your **${ticket.type}** ticket was **automatically closed** after 24 hours of inactivity.`,
-            ticket.robloxUsername ? `**Roblox:** \`${ticket.robloxUsername}\`` : null,
-            ``,
-            `If you still need help, open a new ticket anytime.`,
-          ].filter(Boolean).join("\n"),
-          footer: { text: "/curek" },
-          timestamp: getTimestamp(),
-        }],
-      }).catch(() => {});
+      const dmBody = [
+        `your **${ticket.type}** ticket was automatically closed after 24 hours of inactivity`,
+        ...(ticket.robloxUsername ? [`**roblox**  ·  \`${ticket.robloxUsername}\``] : []),
+        ``,
+        `if you still need help, open a new ticket anytime`,
+      ].join("\n");
+      const dmC = cv2WithHeader(0x4f46e5, "Ticket Auto-Closed", dmBody, "◈  /curek");
+      await ticketUser.send({ components: [dmC], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
 
     if (channel) {
-      await channel.send({
-        embeds: [{
-          color: 0x4f46e5,
-          description: `**This ticket has been automatically closed** due to 24 hours of inactivity.`,
-          footer: { text: "/curek" },
-          timestamp: getTimestamp(),
-        }],
-      }).catch(() => {});
+      const c = cv2(0x4f46e5, "this ticket has been automatically closed due to 24 hours of inactivity", "◈  /curek");
+      await channel.send({ components: [c], flags: MessageFlags.IsComponentsV2 }).catch(() => {});
     }
 
     ticket.status = "closed";
@@ -1401,11 +1118,10 @@ export async function autoCloseIdleTickets(client: Client): Promise<void> {
   }
 }
 
-// Send the ticket closed log to the log channel
+
 async function postCloseLog(client: Client, guild: Guild, ticket: TicketData) {
   const settings = getGuild(guild.id);
   const logChannelId = settings.logChannel;
-
   if (!logChannelId) return;
 
   const logChannel = guild.channels.cache.get(logChannelId) as TextChannel | undefined;
@@ -1414,32 +1130,34 @@ async function postCloseLog(client: Client, guild: Guild, ticket: TicketData) {
   const avatarUrl = await getDiscordAvatar(guild, ticket.userId);
   const transcript = generateTranscript(ticket);
 
-  const descriptionLines = [
-    `**User:** <@${ticket.userId}>`,
-    `**User ID:** \`${ticket.userId}\``,
-    `**Type:** ${ticket.type}`,
+  const descLines = [
+    `**User**  ·  <@${ticket.userId}>  (\`${ticket.userId}\`)`,
+    `**Type**  ·  ${ticket.type}`,
+    ...(ticket.robloxUsername ? [`**Roblox**  ·  \`${ticket.robloxUsername}\``] : []),
+    ...(ticket.requestedTag ? [`**Tag**  ·  \`${ticket.requestedTag}\``] : []),
+    `**Status**  ·  ${ticket.status ?? "closed"}`,
+    ...(ticket.closedBy ? [`**Closed By**  ·  ${ticket.closedBy}`] : []),
   ];
 
-  if (ticket.robloxUsername) descriptionLines.push(`**Roblox:** \`${ticket.robloxUsername}\``);
-  if (ticket.requestedTag) descriptionLines.push(`**Tag:** \`${ticket.requestedTag}\``);
-  descriptionLines.push(`**Status:** ${ticket.status ?? "closed"}`);
-  if (ticket.closedBy) descriptionLines.push(`**Closed By:** ${ticket.closedBy}`);
-
-  const embed: Record<string, unknown> = {
-    color: WHITE,
-    title: "Ticket Closed",
-    description: descriptionLines.join("\n"),
-    timestamp: getTimestamp(),
-  };
-
+  const c = new ContainerBuilder().setAccentColor(WHITE);
   if (avatarUrl) {
-    embed["thumbnail"] = { url: avatarUrl };
+    const section = new SectionBuilder()
+      .addTextDisplayComponents(new TextDisplayBuilder().setContent("**Ticket Closed**"))
+      .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
+    c.addSectionComponents(section);
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  } else {
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent("**Ticket Closed**"));
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
   }
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(descLines.join("\n")));
 
   await logChannel
     .send({
-      embeds: [embed],
+      components: [c],
+      flags: MessageFlags.IsComponentsV2,
       files: [{ attachment: transcript, name: `transcript-${ticket.channelId}.html` }],
     })
     .catch(() => {});
 }
+

@@ -1,7 +1,8 @@
 import {
   ActivityType, ActionRowBuilder, AttachmentBuilder, ButtonBuilder, ButtonStyle,
-  PermissionFlagsBits, type Client, type Message, type GuildMember, type TextChannel, type Guild,
-} from "discord.js";
+  PermissionFlagsBits, SectionBuilder, ThumbnailBuilder,
+  type Client, type Message, type GuildMember, type TextChannel, type Guild,
+  ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags } from "discord.js";
 import {
   getGuild, setGuild, getWhitelist, setWhitelist, getPoints, savePoints,
   memberHasCommandRole, memberHasPointsRole, memberHasTagManagerRole, memberHasPSR,
@@ -14,6 +15,28 @@ import { buildLeaderboardEmbed, refreshLeaderboard } from "../utils/leaderboard.
 import { buildHelpMessage } from "../utils/help.js";
 import { sendTicketPanel, handleTagManagerMessage, closeTicketByMessage } from "../handlers/ticketHandler.js";
 import { logCommand, logPoints, logSetup, logInfo, logError } from "../utils/botLogger.js";
+
+
+function _cv2(color: number, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+}
+function _cv2h(color: number, header: string, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${header}**`));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+}
 
 const WHITE    = 0xffffff;
 const GREEN    = 0x00cc55;
@@ -151,38 +174,13 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         ? `roblox role **${tagInput}** assigned`
         : `roblox role failed: ${result.reason}`;
 
-      await loading.edit({
-        content: null,
-        embeds: [{
-          color: WHITE,
-          description: [
-            `**${user.name}**`,
-            `rank: ${currentRank}`,
-            `tag: \`${tagInput}\``,
-            robloxNote,
-          ].filter(Boolean).join("\n"),
-          footer: { text: `given by ${message.author.username}` },
-          timestamp: ts(),
-        }],
-      });
+      await loading.edit(_cv2h(WHITE, "Tag Given", [`**${user.name}**`, `rank: ${currentRank}`, `tag: \`${tagInput}\``, robloxNote].filter(Boolean).join("\n"), `given by ${message.author.username}`));
 
       const logChannelId = s.tagLogChannel ?? s.logChannel;
       if (logChannelId) {
         const logChannel = message.guild!.channels.cache.get(logChannelId) as TextChannel | undefined;
         if (logChannel) {
-          await logChannel.send({
-            embeds: [{
-              color: WHITE,
-              title: "Tag Given",
-              description: [
-                `**Roblox:** ${user.name}`,
-                `**Given By:** <@${message.author.id}> (${message.author.username})`,
-                `**Tag:** \`${tagInput}\``,
-                rankInfo ? `**Previous Rank:** ${rankInfo.rankName}` : null,
-              ].filter(Boolean).join("\n"),
-              timestamp: ts(),
-            }],
-          }).catch(() => {});
+          await logChannel.send(_cv2h(WHITE, "Tag Given", [`**roblox**  ·  ${user.name}`, `**given by**  ·  <@${message.author.id}>`, `**tag**  ·  \`${tagInput}\``, rankInfo ? `**prev rank**  ·  ${rankInfo.rankName}` : null].filter(Boolean).join("\n"))).catch(() => {});
         }
       }
 
@@ -324,10 +322,10 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       // FIX: was `flagged.length` (undefined) — now correctly uses `combined.length`
       await loading.edit({
         content: null,
-        embeds: [{ color: WHITE, title: `flagged groups (${combined.length})`, description: pages[0], footer: { text: message.client.user?.username ?? "bot" }, timestamp: ts() }],
+        ..._cv2h(WHITE, `Flagged Groups (${combined.length})`, pages[0]!, "◈  flagged groups"),
       });
       for (let p = 1; p < pages.length; p++) {
-        await (message.channel as TextChannel).send({ embeds: [{ color: WHITE, description: pages[p], footer: { text: `page ${p + 1}/${pages.length}` } }] });
+        await (message.channel as TextChannel).send(_cv2(WHITE, pages[p]!, `page ${p + 1}/${pages.length}`));
       }
       return;
     }
@@ -372,35 +370,30 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       const totalPages = pages.length;
       let currentPage  = 0;
 
-      function buildGcEmbeds(page: number): object[] {
-        const header = `**[${user!.name}](${profileUrl})**\n\n**Groups (${groups.length})** — page ${page + 1}/${totalPages}\n`;
-        const mainEmbed: Record<string, unknown> = {
-          color:       embedColor,
-          description: `${header}${pages[page]}`,
-          footer:      { text: message.client.user?.username ?? "bot" },
-          timestamp:   ts(),
-        };
-        if (avatarUrl) mainEmbed["thumbnail"] = { url: avatarUrl };
-
-        const embeds: object[] = [mainEmbed];
-
-        if (isFlagged) {
-          embeds.push({
-            color:       RED,
-            description: `**[${user!.name}](${profileUrl})** is not cleared — ask them to leave:\n\n${flaggedHits.map((m) => `• [${m.group.name}](https://www.roblox.com/groups/${m.group.id})`).join("\n")}`,
-            timestamp:   ts(),
-          });
+      function buildGcEmbeds(page: number): { components: object[]; flags: number } {
+        const components: object[] = [];
+        const mainC = new ContainerBuilder().setAccentColor(embedColor);
+        const header = `**[${user!.name}](${profileUrl})**  ·  **Groups (${groups.length})** — page ${page + 1}/${totalPages}`;
+        if (avatarUrl) {
+          mainC.addSectionComponents(new SectionBuilder().addTextDisplayComponents(new TextDisplayBuilder().setContent(header)).setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl)));
+          mainC.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+        } else {
+          mainC.addTextDisplayComponents(new TextDisplayBuilder().setContent(header));
+          mainC.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
         }
-
-        embeds.push({
-          color:       embedColor,
-          description: inGroup
-            ? `✓ **[${user!.name}](${profileUrl})** is in the group and good to verify\n\n**Group ID:** \`${groupId}\`\n**Link:** [Join Here](https://www.roblox.com/communities/${groupId})`
-            : `✗ **[${user!.name}](${profileUrl})** is not in the group\n\n**Group ID:** \`${groupId}\`\n**Link:** [Join Here](https://www.roblox.com/communities/${groupId})`,
-          timestamp: ts(),
-        });
-
-        return embeds;
+        mainC.addTextDisplayComponents(new TextDisplayBuilder().setContent(pages[page]!));
+        components.push(mainC);
+        if (isFlagged) {
+          const fc = new ContainerBuilder().setAccentColor(RED);
+          fc.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**⚠️  Not Cleared**`));
+          fc.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+          fc.addTextDisplayComponents(new TextDisplayBuilder().setContent(`ask **${user!.name}** to leave:\n${flaggedHits.map((m) => `• [${m.group.name}](https://www.roblox.com/groups/${m.group.id})`).join("\n")}`));
+          components.push(fc);
+        }
+        const gc = new ContainerBuilder().setAccentColor(embedColor);
+        gc.addTextDisplayComponents(new TextDisplayBuilder().setContent(inGroup ? `✓ **[${user!.name}](${profileUrl})** is in the group\n\n**Group ID:** \`${groupId}\`\n**Link:** [Join Here](https://www.roblox.com/communities/${groupId})` : `✗ **[${user!.name}](${profileUrl})** is not in the group\n\n**Group ID:** \`${groupId}\`\n**Link:** [Join Here](https://www.roblox.com/communities/${groupId})`));
+        components.push(gc);
+        return { components: components as object[], flags: MessageFlags.IsComponentsV2 };
       }
 
       function buildNavRow(page: number): ActionRowBuilder<ButtonBuilder> | null {
@@ -420,10 +413,11 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       }
 
       const navRow = buildNavRow(currentPage);
+      const gcResult = buildGcEmbeds(currentPage);
       const gcMsg = await loading.edit({
         content: null,
-        embeds: buildGcEmbeds(currentPage),
-        components: navRow ? [navRow] : [],
+        components: [...(gcResult.components as never[]), ...(navRow ? [navRow] : [])],
+        flags: gcResult.flags,
       });
 
       if (totalPages <= 1) return;
@@ -437,7 +431,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         if (i.customId === "gc_prev" && currentPage > 0) currentPage--;
         else if (i.customId === "gc_next" && currentPage < totalPages - 1) currentPage++;
         const updatedRow = buildNavRow(currentPage);
-        await i.update({ embeds: buildGcEmbeds(currentPage), components: updatedRow ? [updatedRow] : [] });
+        const updated = buildGcEmbeds(currentPage); await i.update({ components: [...(updated.components as never[]), ...(updatedRow ? [updatedRow] : [])], flags: updated.flags } as never);
       });
 
       collector.on("end", () => {
@@ -560,7 +554,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
           ...(s.verificationManagerRole ? [s.verificationManagerRole] : []),
         ];
         if (roles.length === 0) return message.reply("no verification manager roles configured yet");
-        return message.reply({ embeds: [{ color: WHITE, title: "verification manager roles", description: roles.map((id) => `<@&${id}>`).join("\n"), footer: { text: message.guild!.name }, timestamp: ts() }] });
+        return message.reply(_cv2h(WHITE, "Verification Manager Roles", roles.map((id) => `<@&${id}>`).join("\n"), message.guild!.name));
       }
 
       if (sub === "remove") {
@@ -622,57 +616,37 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       if (s.pointsRole) lines.push(`**points manager** (role)\n<@&${s.pointsRole}>`);
       if (s.pointsSupportRole) lines.push(`**points support role** (.psr)\n<@&${s.pointsSupportRole}> — can use \`.check\`, \`.lb\`, \`.rankup\``);
       if (lines.length === 0) return message.reply("nothing whitelisted yet");
-      await message.reply({ embeds: [{ color: WHITE, description: lines.join("\n\n"), footer: { text: message.guild!.name }, timestamp: ts() }] });
+      await message.reply(_cv2(WHITE, lines.join("\n\n"), message.guild!.name));
       return;
     }
 
     case "register": {
       const robloxName = args[0];
       if (!robloxName) {
-        return message.reply({ embeds: [{ color: WHITE, description: "`.register <roblox username>` — links your Discord account to your Roblox username.", timestamp: ts() }] });
+        return message.reply(_cv2(WHITE, "`.register <roblox username>` — links your Discord account to your Roblox username.", "◈  register"));
       }
       const loadMsg = await message.reply("looking up that username...");
       const robloxUser = await getUserByUsername(robloxName).catch(() => null);
       if (!robloxUser) {
-        return loadMsg.edit({ content: null, embeds: [{ color: RED, description: `could not find **${robloxName}** on Roblox — double-check the spelling and try again.`, timestamp: ts() }] });
+        return loadMsg.edit(_cv2(RED, `could not find **${robloxName}** on Roblox — double-check the spelling and try again.`, "◈  register"));
       }
       setRegistered(message.author.id, robloxUser.name);
-      return loadMsg.edit({
-        content: null,
-        embeds: [{
-          color: WHITE,
-          title: "Registration Confirmed",
-          description: [
-            `**Discord:** ${message.author.username}`,
-            `**Roblox:** ${robloxUser.name}`,
-            "Your account has been linked. Run \`.register\` again at any time to update your username.",
-          ].join("\n"),
-          timestamp: ts(),
-        }],
-      });
+      return loadMsg.edit(_cv2h(WHITE, "Registration Confirmed", [`**Discord:** ${message.author.username}`, `**Roblox:** ${robloxUser.name}`, "account linked — run `.register` again to update"].join("\n"), "◈  register"));
     }
 
     case "linked": {
       const registered = getRegistered();
       const entries    = Object.entries(registered);
       if (entries.length === 0) {
-        return message.reply({ embeds: [{ color: WHITE, description: "no users have registered yet.", timestamp: ts() }] });
+        return message.reply(_cv2(WHITE, "no users have registered yet.", "◈  register"));
       }
       const lines = entries.map(([discordId, roblox]) => `<@${discordId}> — **${roblox}**`);
       const pages: string[] = [];
       for (let i = 0; i < lines.length; i += 20) {
         pages.push(lines.slice(i, i + 20).join("\n"));
       }
-      for (const page of pages) {
-        await message.channel.send({
-          embeds: [{
-            color: WHITE,
-            title: pages.indexOf(page) === 0 ? `Registered Users (${entries.length})` : undefined,
-            description: page,
-            footer: { text: message.guild?.name ?? "bot" },
-            timestamp: ts(),
-          }],
-        });
+      for (let pi = 0; pi < pages.length; pi++) {
+        await message.channel.send(pi === 0 ? _cv2h(WHITE, `Registered Users (${entries.length})`, pages[pi]!, message.guild?.name ?? "bot") : _cv2(WHITE, pages[pi]!, `page ${pi + 1}/${pages.length}`));
       }
       return;
     }
@@ -698,7 +672,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         `<@${message.author.id}> gave **+${amount}** to <@${target.id}>`,
         [{ name: "New Total", value: `${pts[target.id]} pts`, inline: true }],
       );
-      return message.reply({ embeds: [{ color: WHITE, description: `+**${amount}** to <@${target.id}> — **${pts[target.id]}** pt${pts[target.id] !== 1 ? "s" : ""} total${promotionNote}`, footer: { text: `given by ${message.author.username}` }, timestamp: ts() }] });
+      return message.reply(_cv2(WHITE, `+**${amount}** to <@${target.id}>  ·  **${pts[target.id]}** pt${pts[target.id] !== 1 ? "s" : ""} total${promotionNote}`, `given by ${message.author.username}`));
     }
 
     case "remove": {
@@ -722,7 +696,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         `<@${message.author.id}> removed **-${amount}** from <@${target.id}>`,
         [{ name: "New Total", value: `${pts[target.id]} pts`, inline: true }],
       );
-      return message.reply({ embeds: [{ color: WHITE, description: `-**${amount}** from <@${target.id}> — **${pts[target.id]}** pt${pts[target.id] !== 1 ? "s" : ""} total${demotionNote}`, footer: { text: `removed by ${message.author.username}` }, timestamp: ts() }] });
+      return message.reply(_cv2(WHITE, `-**${amount}** from <@${target.id}>  ·  **${pts[target.id]}** pt${pts[target.id] !== 1 ? "s" : ""} total${demotionNote}`, `removed by ${message.author.username}`));
     }
 
     case "resetall": {
@@ -732,10 +706,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         new ButtonBuilder().setCustomId("resetall_confirm").setLabel("reset all points").setStyle(ButtonStyle.Danger),
         new ButtonBuilder().setCustomId("resetall_cancel").setLabel("cancel").setStyle(ButtonStyle.Secondary),
       );
-      const msg = await message.reply({
-        embeds: [{ color: WHITE, title: "reset all points", description: "this wipes **every** raid point in the server and can't be undone", footer: { text: `requested by ${message.author.username}` }, timestamp: ts() }],
-        components: [row],
-      });
+      const msg = await message.reply({ ..._cv2h(WHITE, "Reset All Points", "this wipes **every** raid point in the server and can't be undone", `requested by ${message.author.username}`), components: [row] });
       const collector = msg.createMessageComponentCollector({ filter: (i) => i.user.id === message.author.id, time: 15000 });
       collector.on("collect", async (i) => {
         if (i.customId === "resetall_confirm") {
@@ -755,9 +726,9 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
           }
 
           await logPoints(guildId, "Points Reset", `<@${message.author.id}> wiped all raid points and rank roles in this server`);
-          await i.update({ embeds: [{ color: WHITE, title: "points wiped", description: "all raid points cleared and all rank roles removed", footer: { text: `done by ${message.author.username}` }, timestamp: ts() }], components: [] });
+          await i.update({ ..._cv2h(WHITE, "Done", "all raid points cleared and all rank roles removed", `done by ${message.author.username}`), components: [] });
         } else {
-          await i.update({ embeds: [{ color: WHITE, title: "cancelled", description: "nothing changed", timestamp: ts() }], components: [] });
+          await i.update({ ..._cv2h(WHITE, "Cancelled", "nothing changed", "◈  points"), components: [] });
         }
         collector.stop();
       });
@@ -773,7 +744,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       const subject = target ?? message.author;
       const pts     = getPoints(guildId);
       const p       = pts[subject.id] ?? 0;
-      await message.reply({ embeds: [{ color: WHITE, description: `<@${subject.id}> — **${p}** pt${p !== 1 ? "s" : ""}`, footer: { text: message.guild!.name }, timestamp: ts() }] });
+      await message.reply(_cv2(WHITE, `<@${subject.id}>  ·  **${p}** pt${p !== 1 ? "s" : ""}`, message.guild!.name));
       return;
     }
 
@@ -782,7 +753,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       const pts   = getPoints(guildId);
       const embed = buildLeaderboardEmbed(pts, message.guild!.name);
       if (!embed) { await message.reply("nobody has any points yet. be the first!"); return; }
-      const msg = await message.reply({ embeds: [embed] });
+      const msg = await message.reply(embed as Parameters<typeof message.reply>[0]);
       setGuild(guildId, { leaderboardMessage: { channelId: message.channel.id, messageId: msg.id } });
       return;
     }
@@ -890,7 +861,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       const buffer = Buffer.from(JSON.stringify(backup, null, 2), "utf8");
       await logInfo(guildId, "Backup Created", `<@${message.author.id}> created a data backup (${Object.keys(backup.files).length} files)`);
       await message.reply({
-        embeds: [{ color: WHITE, description: `backed up **${Object.keys(backup.files).length}** files`, footer: { text: message.guild!.name }, timestamp: ts() }],
+        ..._cv2(WHITE, `backed up **${Object.keys(backup.files).length}** files`, message.guild!.name),
         files: [new AttachmentBuilder(buffer, { name: `x2k-backup-${Date.now()}.json` })],
       });
       return;
@@ -908,7 +879,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       if (!backup.files || typeof backup.files !== "object") { await loading.edit({ content: "that doesn't look like a valid /curek backup" }); return; }
       const restored = restoreBackup(backup);
       await logInfo(guildId, "Backup Restored", `<@${message.author.id}> restored a backup (${restored} files)`);
-      await loading.edit({ embeds: [{ color: WHITE, description: `restored **${restored}** files`, footer: { text: message.guild!.name }, timestamp: ts() }] });
+      await loading.edit(_cv2(WHITE, `restored **${restored}** files`, message.guild!.name));
       return;
     }
 
@@ -956,7 +927,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       const ranks = (s.rankRoles ?? []).sort((a, b) => a.points - b.points);
       if (ranks.length === 0) return message.reply("no ranks configured yet — use `.addrank <roleId> <points> [name]` to get started");
       const lines = ranks.map((r, i) => `\`${i + 1}.\` <@&${r.roleId}> — **${r.points}** pts — \`${r.name}\``);
-      return message.reply({ embeds: [{ color: WHITE, title: `rank configuration (${ranks.length}/30)`, description: lines.join("\n"), footer: { text: message.guild!.name }, timestamp: ts() }] });
+      return message.reply(_cv2h(WHITE, `Rank Configuration (${ranks.length}/30)`, lines.join("\n"), message.guild!.name));
     }
 
     case "closeticket": {
@@ -981,14 +952,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       groups.push({ groupId, name: info.name });
       setGuild(guildId, { approvedGroups: groups });
       await logSetup(guildId, "Approved Group Added", `<@${message.author.id}> added **${info.name}** to approved groups`);
-      return message.reply({
-        embeds: [{
-          color: WHITE,
-          description: `**${info.name}** (\`${groupId}\`) has been added to the approved groups list.\nTag managers can now use \`.accept\` and \`.pending\` for this group.`,
-          footer: { text: message.guild!.name },
-          timestamp: ts(),
-        }],
-      });
+      return message.reply(_cv2(WHITE, `**${info.name}** (\`${groupId}\`) added to approved groups. Tag managers can now use \`.accept\` and \`.pending\` for this group.`, message.guild!.name));
     }
 
     case "pending": {
@@ -1007,16 +971,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
           results.push(`**${g.name}** (\`${g.groupId}\`) — **${pending.length}** pending\n${names}`);
         }
       }
-      await loading.edit({
-        content: null,
-        embeds: [{
-          color: WHITE,
-          title: "Pending Join Requests",
-          description: results.join("\n\n"),
-          footer: { text: message.guild!.name },
-          timestamp: ts(),
-        }],
-      });
+      await loading.edit(_cv2h(WHITE, "Pending Join Requests", results.join("\n\n"), message.guild!.name));
       return;
     }
 
@@ -1038,15 +993,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       if (!user) return loading.edit({ content: `couldn't find **${username}** on Roblox.` });
       const result = await acceptJoinRequest(group.groupId, user.id);
       if (!result.ok) return loading.edit({ content: `failed to accept the request: ${result.reason}` });
-      await loading.edit({
-        content: null,
-        embeds: [{
-          color: WHITE,
-          description: `**${user.name}**'s join request to **${group.name}** has been accepted by <@${message.author.id}>.`,
-          footer: { text: message.guild!.name },
-          timestamp: ts(),
-        }],
-      });
+      await loading.edit(_cv2(WHITE, `**${user.name}**'s join request to **${group.name}** accepted by <@${message.author.id}>`, message.guild!.name));
       await logCommand(guildId, "Command: .accept",
         `<@${message.author.id}> accepted **${user.name}** into **${group.name}**`,
         [{ name: "Roblox", value: user.name, inline: true }, { name: "Group", value: group.name, inline: true }],
@@ -1071,15 +1018,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
           .setLabel("JOIN")
           .setStyle(ButtonStyle.Secondary),
       );
-      return message.channel.send({
-        embeds: [{
-          color: WHITE,
-          description: "**JOIN QUEUE IF IN QUEUE/INGAME**",
-          footer: { text: "run .endqueue to close the queue" },
-          timestamp: ts(),
-        }],
-        components: [queueRow],
-      });
+      return message.channel.send({ ..._cv2(WHITE, "**JOIN QUEUE IF IN QUEUE/INGAME**", "run .endqueue to close the queue"), components: [queueRow] });
     }
 
     case "endqueue": {
@@ -1095,16 +1034,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         return loading.edit({ content: `couldn't end the queue: ${result.reason}` });
       }
       if (result.entries.length === 0) {
-        return loading.edit({
-          content: null,
-          embeds: [{
-            color: WHITE,
-            title: "Queue Ended",
-            description: "nobody joined the queue during this session",
-            footer: { text: message.guild!.name },
-            timestamp: ts(),
-          }],
-        });
+        return loading.edit(_cv2h(WHITE, "Queue Ended", "nobody joined the queue during this session", message.guild!.name));
       }
       const lines = result.entries.map((e, i) => `\`${i + 1}.\` **${e.name}** (<@${e.id}>)`).join("\n");
       const rankUpLines = result.rankUps.length > 0
@@ -1112,42 +1042,17 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         : "";
       const s = getGuild(guildId);
       const channelNote = s.queueChannel ? `\n\nfull results posted to <#${s.queueChannel}>` : "";
-      return loading.edit({
-        content: null,
-        embeds: [{
-          color: WHITE,
-          title: `Queue Ended — ${result.entries.length} joined`,
-          description: (lines + rankUpLines).slice(0, 3900) + channelNote,
-          footer: { text: `each member received +${result.pointsPerJoin} raid point${result.pointsPerJoin !== 1 ? "s" : ""}` },
-          timestamp: ts(),
-        }],
-      });
+      return loading.edit(_cv2h(WHITE, `Queue Ended — ${result.entries.length} joined`, ((lines + rankUpLines).slice(0, 1800) + channelNote), `each member received +${result.pointsPerJoin} raid point${result.pointsPerJoin !== 1 ? "s" : ""}`));
     }
 
     case "queuelog": {
       const log = getQueueLog(guildId);
       if (!log) return message.reply("no queue is currently active");
       if (log.count === 0) {
-        return message.reply({
-          embeds: [{
-            color: WHITE,
-            title: "Queue Log — 0 joined so far",
-            description: "nobody has clicked JOIN yet",
-            footer: { text: "queue is still active" },
-            timestamp: ts(),
-          }],
-        });
+        return message.reply(_cv2h(WHITE, "Queue Log — 0 joined so far", "nobody has clicked JOIN yet", "queue is still active"));
       }
       const lines = log.entries.map((e, i) => `\`${i + 1}.\` **${e.name}** (<@${e.id}>)`).join("\n");
-      return message.reply({
-        embeds: [{
-          color: WHITE,
-          title: `Queue Log — ${log.count} joined so far`,
-          description: lines.slice(0, 4000),
-          footer: { text: `+${log.pointsPerJoin} pt${log.pointsPerJoin !== 1 ? "s" : ""} per join · run .endqueue to end · .queuepoints <n> to change` },
-          timestamp: ts(),
-        }],
-      });
+      return message.reply(_cv2h(WHITE, `Queue Log — ${log.count} joined so far`, lines.slice(0, 1800), `+${log.pointsPerJoin} pt${log.pointsPerJoin !== 1 ? "s" : ""} per join  ·  .endqueue to end  ·  .queuepoints <n> to change`));
     }
 
     case "queuepoints": {
@@ -1161,7 +1066,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
       }
       const ok = setQueuePoints(guildId, amount);
       if (!ok) return message.reply("couldn't update queue points");
-      return message.reply({ embeds: [{ color: WHITE, description: `queue updated — each JOIN will now give **+${amount}** raid point${amount !== 1 ? "s" : ""}`, timestamp: ts() }] });
+      return message.reply(_cv2(WHITE, `queue updated — each JOIN will now give **+${amount}** raid point${amount !== 1 ? "s" : ""}`, "◈  queue"));
     }
 
     case "setqueuechannel": {
@@ -1186,18 +1091,9 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         if (next.length > 3900) { chunks.push(cur); cur = line; } else { cur = next; }
       }
       if (cur) chunks.push(cur);
-      await message.reply({
-        embeds: [{
-          color: WHITE,
-          title: `Servers (${guilds.size})`,
-          description: chunks[0],
-          timestamp: ts(),
-        }],
-      });
+      await message.reply(_cv2h(WHITE, `Servers (${guilds.size})`, chunks[0]!));
       for (let i = 1; i < chunks.length; i++) {
-        await (message.channel as TextChannel).send({
-          embeds: [{ color: WHITE, description: chunks[i], footer: { text: `page ${i + 1}/${chunks.length}` } }],
-        });
+        await (message.channel as TextChannel).send(_cv2(WHITE, chunks[i]!, `page ${i + 1}/${chunks.length}`));
       }
       return;
     }
@@ -1248,16 +1144,7 @@ async function dispatch(cmd: string, args: string[], message: Message, member: G
         results.push(`**${role.name}**: ${wiped}/${users.length} set to Member`);
       }
 
-      return loading.edit({
-        content: null,
-        embeds: [{
-          color: WHITE,
-          title: `Tag Wipe Complete — ${totalWiped} users reset`,
-          description: results.join("\n") || "no users found with those roles.",
-          footer: { text: `group: ${WIPE_GROUP_ID}` },
-          timestamp: ts(),
-        }],
-      });
+      return loading.edit(_cv2h(WHITE, `Tag Wipe Complete — ${totalWiped} users reset`, results.join("\n") || "no users found with those roles.", `group: ${WIPE_GROUP_ID}`));
     }
 
     default:

@@ -45,7 +45,6 @@ export interface MatchRecord {
   challengeId: string;
 }
 
-// ── guild 1v1 settings ─────────────────────────────────────────────────────────
 
 interface Guild1v1Settings {
   matchLogChannelId?: string;
@@ -142,7 +141,6 @@ export function getLastMatchBetween(guildId: string, aId: string, bId: string): 
   return null;
 }
 
-// ── leaderboard ───────────────────────────────────────────────────────────────
 
 function getAllLBs(): Record<string, Record<string, RankedPlayer>> {
   return readJSON<Record<string, Record<string, RankedPlayer>>>("1v1_leaderboard.json");
@@ -245,7 +243,6 @@ export function getActiveChallengeForUser(guildId: string, userId: string): Pend
   ) ?? null;
 }
 
-// ── challenges ────────────────────────────────────────────────────────────────
 
 function getAllChallenges(): Record<string, PendingChallenge> {
   return readJSON<Record<string, PendingChallenge>>("1v1_challenges.json");
@@ -294,7 +291,6 @@ export function getActiveChallengeBetween(
   ) ?? null;
 }
 
-// ── match history ─────────────────────────────────────────────────────────────
 
 function getAllMatches(): Record<string, MatchRecord[]> {
   return readJSON<Record<string, MatchRecord[]>>("1v1_matches.json");
@@ -335,7 +331,6 @@ export function getPlayerStats(guildId: string, userId: string): PlayerStats {
   return { wins, losses, forfeits, currentSpot: entry?.spot ?? null };
 }
 
-// ── raid attendance ───────────────────────────────────────────────────────────
 
 function getAllRaids(): Record<string, RaidRecord[]> {
   return readJSON<Record<string, RaidRecord[]>>("1v1_raids.json");

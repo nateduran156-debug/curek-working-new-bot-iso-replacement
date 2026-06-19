@@ -11,6 +11,28 @@ interface QueueSession {
   pointsPerJoin: number;
 }
 
+
+function _cv2(color: number, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+}
+function _cv2h(color: number, header: string, body: string, footer?: string) {
+  const c = new ContainerBuilder().setAccentColor(color);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**${header}**`));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(body));
+  if (footer) {
+    c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+    c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ${footer}`));
+  }
+  return { components: [c], flags: MessageFlags.IsComponentsV2 };
+}
+
 const activeSessions = new Map<string, QueueSession>();
 
 export function isQueueActive(guildId: string): boolean {
@@ -94,28 +116,13 @@ export async function endQueue(
       const ch = guild?.channels.cache.get(s.queueChannel) as TextChannel | undefined;
       if (ch) {
         if (entries.length === 0) {
-          await ch.send({
-            embeds: [{
-              color: 0xffffff,
-              title: "Queue Results — 0 joined",
-              description: "nobody joined the queue during this session",
-              timestamp: new Date().toISOString(),
-            }],
-          });
+          await ch.send(_cv2h(0x6366f1, "Queue Results — 0 joined", "nobody joined the queue during this session", "◈  queue"));
         } else {
           const lines = entries.map((e, i) => `\`${i + 1}.\` **${e.name}** (<@${e.id}>)`).join("\n");
           const rankUpLines = rankUps.length > 0
             ? "\n\n**Rank Ups:**\n" + rankUps.map((r) => `**${r.name}** unlocked **${r.ranks.join(", ")}**`).join("\n")
             : "";
-          await ch.send({
-            embeds: [{
-              color: 0xffffff,
-              title: `Queue Results — ${entries.length} joined`,
-              description: (lines + rankUpLines).slice(0, 4000),
-              footer: { text: `each member received +${ptsPerJoin} raid point${ptsPerJoin !== 1 ? "s" : ""}` },
-              timestamp: new Date().toISOString(),
-            }],
-          });
+          await ch.send(_cv2h(0x6366f1, `Queue Results — ${entries.length} joined`, (lines + rankUpLines).slice(0, 1800), `each member received +${ptsPerJoin} raid point${ptsPerJoin !== 1 ? "s" : ""}`));
         }
       }
     } catch {}

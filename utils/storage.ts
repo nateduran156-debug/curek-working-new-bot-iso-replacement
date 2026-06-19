@@ -164,8 +164,13 @@ export function memberHasTagManagerRole(
   guildId: string,
 ): boolean {
   const s = getGuild(guildId);
-  if (!s.tagManagerRole) return false;
-  return member.roles.cache.has(s.tagManagerRole);
+  // check both the old single-role field and the newer array — gotta support both
+  const allTagRoles = [
+    ...(s.tagManagerRoles ?? []),
+    ...(s.tagManagerRole ? [s.tagManagerRole] : []),
+  ];
+  if (allTagRoles.length === 0) return false;
+  return allTagRoles.some(id => member.roles.cache.has(id));
 }
 
 export function memberHasVerificationManagerRole(
@@ -173,11 +178,12 @@ export function memberHasVerificationManagerRole(
   guildId: string,
 ): boolean {
   const s = getGuild(guildId);
-  const roles: string[] = [
+  const vmrRoles = [
     ...(s.verificationManagerRoles ?? []),
     ...(s.verificationManagerRole ? [s.verificationManagerRole] : []),
   ];
-  return roles.some((id) => member.roles.cache.has(id));
+  if (vmrRoles.length === 0) return false;
+  return vmrRoles.some(id => member.roles.cache.has(id));
 }
 
 export function memberHasPSR(

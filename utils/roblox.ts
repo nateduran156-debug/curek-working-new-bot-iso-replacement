@@ -428,7 +428,6 @@ export async function getGroupMembersByRole(
   return members;
 }
 
-// ── Presence & Game APIs (used by tracker) ───────────────────────────────────
 
 export interface RobloxPresence {
   userPresenceType: number; // 0=offline 1=web 2=ingame 3=studio

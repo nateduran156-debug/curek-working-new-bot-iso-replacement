@@ -1,12 +1,11 @@
 import type { Client } from "discord.js";
+import { ContainerBuilder, TextDisplayBuilder, SeparatorBuilder, SeparatorSpacingSize, MessageFlags } from "discord.js";
 import { readJSON, getGuild } from "./storage.js";
-
-const SEP = "───────────────────────────────";
 
 export function buildLeaderboardEmbed(
   guildPts: Record<string, number>,
-  guildName: string,
-): object | null {
+  _guildName: string,
+): { components: object[]; flags: number } | null {
   const sorted = Object.entries(guildPts)
     .filter(([, pts]) => pts > 0)
     .sort(([, a], [, b]) => b - a)
@@ -14,18 +13,24 @@ export function buildLeaderboardEmbed(
 
   if (sorted.length === 0) return null;
 
+  const MEDALS = ["🥇", "🥈", "🥉"];
   const list = sorted
-    .map(([id, pts], i) => `  \`${i + 1}.\`  <@${id}>  ·  **${pts}** pt${pts !== 1 ? "s" : ""}`)
+    .map(([id, pts], i) => {
+      const medal = MEDALS[i] ?? `\`${i + 1}.\``;
+      return `${medal}  <@${id}>  ·  **${pts}** pt${pts !== 1 ? "s" : ""}`;
+    })
     .join("\n");
 
   const now = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
-  return {
-    color: 0x6366f1,
-    description: `${SEP}\n${list}\n${SEP}`,
-    footer: { text: `◈  points  ·  updated ${now}` },
-    timestamp: new Date().toISOString(),
-  };
+  const c = new ContainerBuilder().setAccentColor(0x6366f1);
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`**◈  Points Leaderboard**`));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(true));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(list));
+  c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+  c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# updated ${now}`));
+
+  return { components: [c], flags: MessageFlags.IsComponentsV2 };
 }
 
 export async function refreshLeaderboard(client: Client, guildId: string): Promise<void> {
@@ -47,10 +52,10 @@ export async function refreshLeaderboard(client: Client, guildId: string): Promi
 
     const data     = readJSON<Record<string, Record<string, number>>>("points.json");
     const guildPts = data[guildId] ?? {};
-    const embed    = buildLeaderboardEmbed(guildPts, guild.name);
-    if (!embed) return;
+    const payload  = buildLeaderboardEmbed(guildPts, guild.name);
+    if (!payload) return;
 
-    await msg.edit({ embeds: [embed] });
+    await msg.edit(payload as Parameters<typeof msg.edit>[0]);
   } catch {
     // probably got deleted or something, ignore it
   }

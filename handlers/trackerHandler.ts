@@ -1,5 +1,16 @@
 import type { Client } from "discord.js";
-import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from "discord.js";
+import {
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ContainerBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  SectionBuilder,
+  ThumbnailBuilder,
+  MessageFlags,
+} from "discord.js";
 import { getAllTracks, updateLastGame, getDmOnJoin, getNotifyChannelId } from "../utils/trackerStorage.js";
 import { getUserPresence, getGameName, getUniverseDetails, getUserAvatarUrl } from "../utils/roblox.js";
 
@@ -10,13 +21,13 @@ async function sendAlert(
   discordUserId: string,
   notifyChannelId: string | null,
   dmEnabled: boolean,
-  payload: { embeds: object[]; components: unknown[]; content?: string },
+  payload: { components: object[]; flags: number; content?: string },
 ): Promise<void> {
   if (notifyChannelId) {
     try {
       const channel = await client.channels.fetch(notifyChannelId).catch(() => null) as import("discord.js").TextChannel | null;
       if (channel?.isTextBased()) {
-        await channel.send({ content: `<@${discordUserId}>`, embeds: payload.embeds as never[], components: payload.components as never[] });
+        await channel.send({ content: `<@${discordUserId}>`, ...payload } as never);
         return;
       }
     } catch {
@@ -27,7 +38,7 @@ async function sendAlert(
   if (dmEnabled) {
     try {
       const user = await client.users.fetch(discordUserId);
-      await user.send({ embeds: payload.embeds as never[], components: payload.components as never[] });
+      await user.send(payload as never);
     } catch {
       // DM failed silently (user has DMs off etc.)
     }
@@ -104,36 +115,42 @@ export async function runTrackerCycle(client: Client): Promise<void> {
                 ? `https://www.roblox.com/games/${currentPlaceId}`
                 : null;
 
-            const descLines = [
+            const bodyLines = [
               `**${entry.robloxUsername}** hopped in a game`,
-              `game: \`${gameName}\``,
+              `**game**  ·  \`${gameName}\``,
+              ...(entry.alertGame ? [`**filter**  ·  \`${entry.alertGame}\``] : []),
             ];
-            if (entry.alertGame) descLines.push(`filter: \`${entry.alertGame}\``);
 
-            const embedBase = {
-              color: DARK_RED,
-              description: descLines.join("\n"),
-              footer: { text: "/curek tracker" },
-              timestamp: new Date().toISOString(),
-            };
-            const embed = avatarUrl
-              ? { ...embedBase, author: { name: entry.robloxUsername, icon_url: avatarUrl, url: `https://www.roblox.com/users/${robloxUserId}/profile` } }
-              : embedBase;
+            const c = new ContainerBuilder().setAccentColor(DARK_RED);
 
-            const components = joinUrl
-              ? [
-                  new ActionRowBuilder<ButtonBuilder>().addComponents(
-                    new ButtonBuilder()
-                      .setLabel(hasSpecificServer ? "join server" : "open game")
-                      .setStyle(ButtonStyle.Link)
-                      .setURL(joinUrl),
-                  ),
-                ]
-              : [];
+            if (avatarUrl) {
+              const section = new SectionBuilder()
+                .addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyLines.join("\n")))
+                .setThumbnailAccessory(new ThumbnailBuilder().setURL(avatarUrl));
+              c.addSectionComponents(section);
+            } else {
+              c.addTextDisplayComponents(new TextDisplayBuilder().setContent(bodyLines.join("\n")));
+            }
+
+            c.addSeparatorComponents(new SeparatorBuilder().setSpacing(SeparatorSpacingSize.Small).setDivider(false));
+            c.addTextDisplayComponents(new TextDisplayBuilder().setContent(`-# ◈  /curek tracker`));
+
+            const components: object[] = [c];
+
+            if (joinUrl) {
+              components.push(
+                new ActionRowBuilder<ButtonBuilder>().addComponents(
+                  new ButtonBuilder()
+                    .setLabel(hasSpecificServer ? "join server" : "open game")
+                    .setStyle(ButtonStyle.Link)
+                    .setURL(joinUrl),
+                ),
+              );
+            }
 
             await sendAlert(client, entry.discordUserId, notifyChannelId, dmEnabled, {
-              embeds: [embed],
               components,
+              flags: MessageFlags.IsComponentsV2,
             });
 
           } else if (!isInGame && wasInGame) {
